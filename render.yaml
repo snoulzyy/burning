@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: channel-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /rd1
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # To keep the board across restarts, create a Postgres instance on Render
+      # and paste its Internal Database URL here as DATABASE_URL (or add it in
+      # the dashboard under Environment). Without it the board resets whenever
+      # a free instance wakes from sleep.
+      # - key: DATABASE_URL
+      #   sync: false
