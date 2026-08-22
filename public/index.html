@@ -100,14 +100,17 @@
     cursor:pointer;border:1px solid transparent;background:rgba(255,255,255,.05);
   }
   .pct:hover{filter:brightness(1.35)}
-  .count{margin-left:auto;font-size:11px;font-weight:700;color:var(--dim)}
+  .count{font-size:11px;font-weight:700;color:var(--dim);flex:none}
   .watch{
-    width:20px;height:20px;flex:none;display:grid;place-items:center;
+    width:21px;height:21px;flex:none;display:grid;place-items:center;
     font:inherit;font-size:12px;line-height:1;cursor:pointer;border-radius:4px;
     border:1px solid var(--line);background:var(--panel-2);color:var(--dim);transition:.15s;
   }
   .watch:hover{color:var(--amber);border-color:rgba(245,158,11,.55)}
-  .watch.on{color:var(--amber);border-color:rgba(245,158,11,.7);background:rgba(245,158,11,.14)}
+  .watch svg{width:12px;height:12px;display:block}
+  .watch.on{color:var(--amber);border-color:rgba(245,158,11,.75);background:rgba(245,158,11,.16)}
+  .ch.full .watch{color:#c9b083;border-color:rgba(245,158,11,.45)}
+  .ch.full .watch.on{color:var(--amber)}
   .ch.watched{border-color:rgba(245,158,11,.55);box-shadow:0 0 22px rgba(245,158,11,.10)}
   .tip{margin-left:auto;font-size:10.5px;font-weight:400;letter-spacing:0;color:var(--dim)}
   .tip code{color:var(--cyan);font-size:10.5px}
@@ -118,7 +121,8 @@
     box-shadow:0 12px 34px rgba(0,0,0,.7);max-width:calc(100% - 24px);
   }
   .toast.warn{border-color:rgba(239,68,68,.7)}
-  .ago{font-size:10.5px;color:#8ba0b4;white-space:nowrap}
+  .ago{font-size:11px;font-weight:600;color:var(--amber);white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .grow{flex:1 1 auto;min-width:0}
   .count.full{color:var(--red)}
 
   .icon{
@@ -127,7 +131,7 @@
     border:1px solid var(--line);background:var(--raise);color:var(--dim);transition:.15s;
   }
   .icon:hover{color:var(--text);border-color:#2d3f52}
-  .add{margin-left:auto;width:22px;height:22px;font-size:13px}
+  .add{width:22px;height:22px;font-size:13px;flex:none}
   .add:hover{color:var(--cyan);border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
   .edit{border-color:rgba(34,211,238,.3);color:var(--cyan)}
   .edit:hover{background:rgba(34,211,238,.14);border-color:var(--cyan)}
@@ -271,6 +275,7 @@
     <span id="tally"></span>
     <span class="sticker-row" id="stickFoot"></span>
     <div class="spacer"></div>
+    <button class="ghost" id="soundBtn" title="Alert sound when a watched channel opens">🔊 alert: on</button>
     <button class="ghost danger" id="clearBoard">Clear board</button>
   </footer>
 </div>
@@ -309,6 +314,13 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function starSVG(filled){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    + '<path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.7l6.1-.9z"'
+    + ' fill="' + (filled ? "currentColor" : "none") + '"'
+    + ' stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+}
 
 function stickerImg(file, w){
   const el = document.createElement("img");
@@ -407,6 +419,57 @@ function stamp(ts){
 }
 const send = a => socket.emit("action", Object.assign({by:me}, a));
 
+/* ---------------- alert sound + tab flashing ---------------- */
+let soundOn = true;
+try { soundOn = localStorage.getItem("ct:sound") !== "off" } catch(e){}
+
+let audioCtx = null;
+function primeAudio(){
+  try {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+  } catch(e){}
+}
+document.addEventListener("click", primeAudio, { once: true });
+
+function beep(startAt){
+  const notes = [880, 1174.7, 1568];
+  notes.forEach((f, i) => {
+    const t = startAt + i * 0.13;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "triangle";
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.36);
+  });
+}
+function alarm(){
+  if(!soundOn) return;
+  primeAudio();
+  if(!audioCtx) return;
+  const now = audioCtx.currentTime;
+  // three bursts, so it's hard to miss from across the room
+  [0, 1.1, 2.2].forEach(off => beep(now + off));
+}
+
+let titleTimer = null, baseTitle = null;
+function flashTitle(msg){
+  if(baseTitle === null) baseTitle = document.title;
+  clearInterval(titleTimer);
+  let on = false;
+  titleTimer = setInterval(() => {
+    document.title = (on = !on) ? "🔔 " + msg : baseTitle;
+  }, 900);
+}
+function stopFlash(){
+  clearInterval(titleTimer);
+  if(baseTitle !== null) document.title = baseTitle;
+}
+window.addEventListener("focus", stopFlash);
+
 let toastTimer = null;
 function toast(msg, warn){
   const old = document.querySelector(".toast");
@@ -472,9 +535,12 @@ function checkWatched(next){
     watching.delete(idx); changed = true;
     if(firstSync) return;                       // don't shout on page load
     const msg = chLabel(idx) + " has a free slot (" + c.pct + "% burning)";
+    alarm();
+    flashTitle(chLabel(idx) + " open");
     try {
       if(window.Notification && Notification.permission === "granted"){
-        new Notification(region + " — slot open", { body: msg });
+        const n = new Notification(region + " — slot open", { body: msg, requireInteraction: true });
+        n.onclick = () => { window.focus(); stopFlash(); n.close(); };
       }
     } catch(e){}
     toast(msg);
@@ -565,6 +631,10 @@ function card(c,i){
     head.appendChild(t);
   }
 
+  const grow = document.createElement("span");
+  grow.className = "grow";
+  head.appendChild(grow);
+
   if(c.entries.length){
     const cnt = document.createElement("span");
     cnt.className = "count" + (c.entries.length>=CAP ? " full" : "");
@@ -575,7 +645,7 @@ function card(c,i){
   if(c.entries.length >= CAP){
     const w = document.createElement("button");
     w.className = "watch" + (watching.has(i) ? " on" : "");
-    w.textContent = watching.has(i) ? "★" : "☆";
+    w.innerHTML = starSVG(watching.has(i));
     w.title = watching.has(i) ? "Watching — you'll be told when a slot opens" : "Watch for a free slot";
     w.onclick = e => {
       e.stopPropagation();
@@ -817,6 +887,16 @@ whoBtn.onclick = () => {
     whoBtn.textContent = me;
     try { localStorage.setItem("ct:name", me) } catch(e){}
   }
+};
+
+const soundBtn = document.getElementById("soundBtn");
+function paintSound(){ soundBtn.textContent = soundOn ? "🔊 alert: on" : "🔇 alert: off" }
+paintSound();
+soundBtn.onclick = () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem("ct:sound", soundOn ? "on" : "off") } catch(e){}
+  paintSound();
+  if(soundOn){ primeAudio(); if(audioCtx) beep(audioCtx.currentTime); }
 };
 
 document.getElementById("clearBoard").onclick = () => {
