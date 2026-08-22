@@ -117,11 +117,31 @@ io.on("connection", socket => {
         break;
       }
       case "add": {
-        if (!target || target.entries.length >= CAP) return;
+        if (!target) return;
         const name = clean(a.name, 24);
         if (!name) return;
+        const key = name.toLowerCase();
+
+        // already on this channel? just restart their timer
+        const here = target.entries.find(e => e.name.toLowerCase() === key);
+        if (here) {
+          here.at = Date.now();
+          note(region, `${here.name} timer reset in ${ch(at)}`);
+          break;
+        }
+        if (target.entries.length >= CAP) return;
+
+        // one person, one channel — pull them off wherever else they were
+        let cameFrom = null;
+        board.forEach((c, idx) => {
+          const i = c.entries.findIndex(e => e.name.toLowerCase() === key);
+          if (i !== -1) { c.entries.splice(i, 1); cameFrom = idx; }
+        });
+
         target.entries.push({ id: uid(), name, at: Date.now() });
-        note(region, `${name} added to ${ch(at)}`);
+        note(region, cameFrom === null
+          ? `${name} added to ${ch(at)}`
+          : `${name} moved to ${ch(at)} — was on ${ch(cameFrom)}`);
         break;
       }
       case "remove": {

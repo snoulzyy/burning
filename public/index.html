@@ -101,7 +101,24 @@
   }
   .pct:hover{filter:brightness(1.35)}
   .count{margin-left:auto;font-size:11px;font-weight:700;color:var(--dim)}
-  .ago{font-size:9.5px;color:#4a5f74;white-space:nowrap}
+  .watch{
+    width:20px;height:20px;flex:none;display:grid;place-items:center;
+    font:inherit;font-size:12px;line-height:1;cursor:pointer;border-radius:4px;
+    border:1px solid var(--line);background:var(--panel-2);color:var(--dim);transition:.15s;
+  }
+  .watch:hover{color:var(--amber);border-color:rgba(245,158,11,.55)}
+  .watch.on{color:var(--amber);border-color:rgba(245,158,11,.7);background:rgba(245,158,11,.14)}
+  .ch.watched{border-color:rgba(245,158,11,.55);box-shadow:0 0 22px rgba(245,158,11,.10)}
+  .tip{margin-left:auto;font-size:10.5px;font-weight:400;letter-spacing:0;color:var(--dim)}
+  .tip code{color:var(--cyan);font-size:10.5px}
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:80;
+    padding:9px 15px;border-radius:999px;background:#0a1119;color:var(--text);
+    border:1px solid rgba(34,211,238,.6);font-size:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.7);max-width:calc(100% - 24px);
+  }
+  .toast.warn{border-color:rgba(239,68,68,.7)}
+  .ago{font-size:10.5px;color:#8ba0b4;white-space:nowrap}
   .count.full{color:var(--red)}
 
   .icon{
@@ -240,13 +257,13 @@
   <div class="grid" id="grid"></div>
 
   <section class="chat">
-    <div class="chat-head"><span class="dot"></span><span id="chatTitle">CHAT</span></div>
+    <div class="chat-head"><span class="dot"></span><span id="chatTitle">CHAT</span><span class="tip">type <code>12 name</code> to add someone to CH 12</span></div>
     <div class="log" id="log"></div>
     <div class="say">
       <span class="dot"></span>
       <button class="who-btn" id="whoBtn" title="Change your display name">Guest</button>
       <span class="sep" style="color:#3a4c5e">·</span>
-      <input id="sayInput" placeholder="Message..." maxlength="200" aria-label="Send a message">
+      <input id="sayInput" placeholder="Message… or 12 weenie" maxlength="200" aria-label="Send a message">
     </div>
   </section>
 
@@ -272,6 +289,15 @@ let menuEl = null;
 let picked = null;      // {ch, id} or {ch, group:true} — tap-to-move, for touch
 let me = "Guest";
 try { me = localStorage.getItem("ct:name") || "Guest" } catch (e) {}
+
+// channels this browser is watching for a free slot
+let watching = new Set();
+let firstSync = true;
+const watchKey = () => "ct:watch:" + region;
+try { watching = new Set(JSON.parse(localStorage.getItem(watchKey()) || "[]")) } catch (e) {}
+function saveWatch(){
+  try { localStorage.setItem(watchKey(), JSON.stringify([...watching])) } catch (e) {}
+}
 
 /* =========================================================================
    STICKERS  —  put image files in  public/img/  and list them below.
@@ -381,6 +407,18 @@ function stamp(ts){
 }
 const send = a => socket.emit("action", Object.assign({by:me}, a));
 
+let toastTimer = null;
+function toast(msg, warn){
+  const old = document.querySelector(".toast");
+  if(old) old.remove();
+  const t = document.createElement("div");
+  t.className = "toast" + (warn ? " warn" : "");
+  t.textContent = msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 3200);
+}
+
 /* ---------------- socket ---------------- */
 socket.on("connect", () => {
   document.getElementById("conn").classList.remove("off");
@@ -418,10 +456,32 @@ socket.on("presence", n => {
 });
 
 socket.on("sync", s => {
+  checkWatched(s.channels);
   if(editing){ pending = s; return; }
   board = s.channels; log = s.log;
   render();
 });
+
+function checkWatched(next){
+  if(!watching.size) return;
+  let changed = false;
+  [...watching].forEach(idx => {
+    const c = next[idx];
+    if(!c) { watching.delete(idx); changed = true; return; }
+    if(c.entries.length >= CAP) return;
+    watching.delete(idx); changed = true;
+    if(firstSync) return;                       // don't shout on page load
+    const msg = chLabel(idx) + " has a free slot (" + c.pct + "% burning)";
+    try {
+      if(window.Notification && Notification.permission === "granted"){
+        new Notification(region + " — slot open", { body: msg });
+      }
+    } catch(e){}
+    toast(msg);
+  });
+  firstSync = false;
+  if(changed) saveWatch();
+}
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
 /* ---------------- board ---------------- */
@@ -463,7 +523,8 @@ function renderHint(){
 
 function card(c,i){
   const el = document.createElement("div");
-  el.className = "ch" + (c.entries.length>=CAP ? " full" : c.entries.length ? " occupied" : "");
+  el.className = "ch" + (c.entries.length>=CAP ? " full" : c.entries.length ? " occupied" : "")
+    + (watching.has(i) ? " watched" : "");
 
   const head = document.createElement("div");
   head.className = "ch-head";
@@ -509,6 +570,28 @@ function card(c,i){
     cnt.className = "count" + (c.entries.length>=CAP ? " full" : "");
     cnt.textContent = c.entries.length + "/" + CAP;
     head.appendChild(cnt);
+  }
+
+  if(c.entries.length >= CAP){
+    const w = document.createElement("button");
+    w.className = "watch" + (watching.has(i) ? " on" : "");
+    w.textContent = watching.has(i) ? "★" : "☆";
+    w.title = watching.has(i) ? "Watching — you'll be told when a slot opens" : "Watch for a free slot";
+    w.onclick = e => {
+      e.stopPropagation();
+      if(watching.has(i)){
+        watching.delete(i);
+        toast("Stopped watching " + chLabel(i));
+      } else {
+        watching.add(i);
+        toast("Watching " + chLabel(i) + " — you'll be told when a slot opens");
+        try {
+          if(window.Notification && Notification.permission === "default") Notification.requestPermission();
+        } catch(err){}
+      }
+      saveWatch(); render();
+    };
+    head.appendChild(w);
   }
 
   if(c.entries.length < CAP){
@@ -699,6 +782,28 @@ sayInput.addEventListener("keydown", e => {
   if(e.key !== "Enter") return;
   const v = sayInput.value.trim();
   if(!v) return;
+
+  // "12 weenie" / "ch12 weenie" / "ch 12 weenie" -> add to that channel
+  const quick = v.match(/^(?:ch\s*)?(\d{1,2})\s+(.{1,24})$/i);
+  if(quick){
+    const n = parseInt(quick[1], 10);
+    const name = quick[2].trim();
+    if(n >= 1 && n <= board.length){
+      const c = board[n-1];
+      const dupHere = c.entries.some(x => x.name.toLowerCase() === name.toLowerCase());
+      if(c.entries.length >= CAP && !dupHere){
+        toast(chLabel(n-1) + " is full (4/4)", true);
+        return;
+      }
+      send({type:"add", ch:n-1, name});
+      sayInput.value = "";
+      toast(name + " → " + chLabel(n-1));
+      return;
+    }
+    toast("No channel " + n + " — pick 1 to " + board.length, true);
+    return;
+  }
+
   socket.emit("chat", {who:me, text:v});
   sayInput.value = "";
 });
