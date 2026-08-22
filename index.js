@@ -24,7 +24,7 @@ const byId = id => REGIONS.find(r => r.id === id);
 
 /* ---------------- state ---------------- */
 const blankRegion = () => ({
-  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, entries: [] })),
+  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, entries: [] })),
   log: []
 });
 
@@ -112,7 +112,8 @@ io.on("connection", socket => {
         const v = Math.max(0, Math.min(100, Math.round(Number(a.pct) / 10) * 10));
         if (target.pct === v) return;
         target.pct = v;
-        note(region, `${ch(at)} burning set to ${v}%`);
+        target.pctAt = Date.now();
+        note(region, `${ch(at)} burning set to ${v}% by ${by}`);
         break;
       }
       case "add": {
@@ -154,6 +155,7 @@ io.on("connection", socket => {
         const i = from.entries.findIndex(e => e.id === a.id);
         if (i === -1) return;
         const [moved] = from.entries.splice(i, 1);
+        moved.at = Date.now();
         to.entries.push(moved);
         note(region, `${ch(Number(a.from))} → ${ch(Number(a.to))}: ${moved.name} moved`);
         break;
@@ -161,12 +163,15 @@ io.on("connection", socket => {
       case "moveGroup": {
         const from = board[Number(a.from)], to = board[Number(a.to)];
         if (!from || !to || from === to || !from.entries.length) return;
+        const now = Date.now();
         if (!to.entries.length) {
           note(region, `${ch(Number(a.from))} → ${ch(Number(a.to))}: ${from.entries.map(e => e.name).join(", ")} moved`);
+          from.entries.forEach(e => { e.at = now; });
           to.entries = from.entries;
           from.entries = [];
         } else {
           note(region, `${ch(Number(a.from))} ⇄ ${ch(Number(a.to))} swapped`);
+          from.entries.concat(to.entries).forEach(e => { e.at = now; });
           const tmp = to.entries; to.entries = from.entries; from.entries = tmp;
         }
         break;
