@@ -101,6 +101,7 @@
   }
   .pct:hover{filter:brightness(1.35)}
   .count{margin-left:auto;font-size:11px;font-weight:700;color:var(--dim)}
+  .ago{font-size:9.5px;color:#4a5f74;white-space:nowrap}
   .count.full{color:var(--red)}
 
   .icon{
@@ -363,6 +364,13 @@ function hslHex(h, s, l){
   return "#" + hex(r) + hex(g) + hex(b);
 }
 const chLabel = i => "CH " + String(i+1).padStart(2,"0");
+function ago(at){
+  const m = Math.floor((Date.now()-at)/60000);
+  if(m < 1)  return "just now";
+  if(m < 60) return m + "m ago";
+  const h = Math.floor(m/60);
+  return h < 24 ? h + "h ago" : Math.floor(h/24) + "d ago";
+}
 function elapsed(at){
   const m = Math.max(0, Math.floor((Date.now()-at)/60000));
   return m<60 ? m+"m" : Math.floor(m/60)+"h"+String(m%60).padStart(2,"0")+"m";
@@ -488,6 +496,13 @@ function card(c,i){
   p.style.color = col; p.style.background = col+"20"; p.style.borderColor = col+"55";
   p.onclick = e => { e.stopPropagation(); openPctMenu(p, i) };
   head.appendChild(p);
+
+  if(c.pctAt){
+    const t = document.createElement("span");
+    t.className = "ago"; t.dataset.at = c.pctAt; t.textContent = ago(c.pctAt);
+    t.title = "burning % last changed";
+    head.appendChild(t);
+  }
 
   if(c.entries.length){
     const cnt = document.createElement("span");
@@ -707,6 +722,7 @@ document.getElementById("clearBoard").onclick = () => {
 setInterval(() => {
   document.getElementById("refreshed").textContent =
     new Date().toISOString().slice(11,19) + " UTC";
+  document.querySelectorAll(".ago").forEach(a => { a.textContent = ago(+a.dataset.at) });
   document.querySelectorAll(".clock").forEach(c => {
     const at = +c.dataset.at;
     c.textContent = elapsed(at);
