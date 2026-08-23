@@ -116,6 +116,17 @@
   .ch.full .watch{color:#c9b083;border-color:rgba(245,158,11,.45)}
   .ch.full .watch.on{color:var(--amber)}
   .ch.watched{border-color:rgba(245,158,11,.55);box-shadow:0 0 22px rgba(245,158,11,.10)}
+  .logfilter{display:inline-flex;gap:3px;margin-left:12px}
+  .logfilter button{
+    font:inherit;font-size:10px;font-weight:600;letter-spacing:.08em;
+    color:var(--dim);background:none;border:1px solid transparent;
+    border-radius:6px;padding:3px 9px;cursor:pointer;transition:.15s;
+  }
+  .logfilter button:hover{color:var(--text);background:rgba(255,255,255,.04)}
+  .logfilter button[aria-pressed="true"]{
+    color:var(--cyan);border-color:rgba(34,211,238,.4);background:rgba(34,211,238,.10);
+  }
+  @media(max-width:700px){.tip{display:none}}
   .tip{margin-left:auto;font-size:10.5px;font-weight:400;letter-spacing:0;color:var(--dim)}
   .tip code{color:var(--cyan);font-size:10.5px}
   .toast{
@@ -297,7 +308,7 @@
   <div class="grid" id="grid"></div>
 
   <section class="chat">
-    <div class="chat-head"><span class="dot"></span><span id="chatTitle">CHAT</span><span class="tip"><code>12 name</code> adds · <code>12 70%</code> sets burning</span></div>
+    <div class="chat-head"><span class="dot"></span><span id="chatTitle">CHAT</span><span class="logfilter" id="logFilter"></span><span class="tip"><code>12 name</code> adds · <code>12 70%</code> sets burning</span></div>
     <div class="log" id="log"></div>
     <div class="say">
       <span class="dot"></span>
@@ -312,7 +323,6 @@
     <span class="sticker-row" id="stickFoot"></span>
     <div class="spacer"></div>
     <button class="ghost" id="soundBtn" title="Alert sound when a watched channel opens">🔊 alert: on</button>
-    <button class="ghost danger" id="clearBoard">Clear board</button>
   </footer>
 </div>
 
@@ -921,17 +931,43 @@ window.addEventListener("scroll", closeMenu, true);
 
 /* ---------------- chat ---------------- */
 const logEl = document.getElementById("log");
+let logView = "all";
+try { logView = localStorage.getItem("ct:logview") || "all" } catch(e){}
+
+function renderFilter(){
+  const box = document.getElementById("logFilter");
+  if(!box) return;
+  box.innerHTML = "";
+  [["all","ALL"],["chat","CHAT"],["activity","ACTIVITY"]].forEach(([id,label]) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.setAttribute("aria-pressed", logView === id);
+    b.onclick = () => {
+      logView = id;
+      try { localStorage.setItem("ct:logview", id) } catch(e){}
+      renderFilter(); renderLog();
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+    box.appendChild(b);
+  });
+}
+
 function renderLog(){
+  renderFilter();
   const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 60;
   logEl.innerHTML = "";
-  if(!log.length){
+  const shown = log.filter(item =>
+    logView === "all" ? true : logView === "chat" ? !!item.who : !item.who);
+  if(!shown.length){
     const e = document.createElement("div");
     e.className = "empty";
-    e.textContent = "Nothing yet. Every change to this board shows up here.";
+    e.textContent = logView === "chat" ? "No messages yet."
+      : logView === "activity" ? "No changes logged yet."
+      : "Nothing yet. Every change to this board shows up here.";
     logEl.appendChild(e);
     return;
   }
-  log.forEach(item => {
+  shown.forEach(item => {
     const line = document.createElement("div");
     line.innerHTML = '<span class="t"></span> <span class="src"></span> <span class="sep">:</span> <span class="msg"></span>';
     line.querySelector(".t").textContent = "[" + stamp(item.t) + "]";
@@ -1009,10 +1045,6 @@ soundBtn.onclick = () => {
   try { localStorage.setItem("ct:sound", soundOn ? "on" : "off") } catch(e){}
   paintSound();
   if(soundOn){ primeAudio(); if(audioCtx) beep(audioCtx.currentTime); }
-};
-
-document.getElementById("clearBoard").onclick = () => {
-  if(confirm("Clear every channel on this board for everyone?")) send({type:"clear"});
 };
 
 /* ---------------- clocks ---------------- */

@@ -126,7 +126,7 @@ io.on("connection", socket => {
         const here = target.entries.find(e => e.name.toLowerCase() === key);
         if (here) {
           here.at = Date.now();
-          note(region, `${here.name} timer reset in ${ch(at)}`);
+          note(region, `${here.name} timer reset in ${ch(at)} by ${by}`);
           break;
         }
         if (target.entries.length >= CAP) return;
@@ -140,8 +140,8 @@ io.on("connection", socket => {
 
         target.entries.push({ id: uid(), name, at: Date.now() });
         note(region, cameFrom === null
-          ? `${name} added to ${ch(at)}`
-          : `${name} moved to ${ch(at)} — was on ${ch(cameFrom)}`);
+          ? `${name} added to ${ch(at)} by ${by}`
+          : `${name} moved ${ch(cameFrom)} → ${ch(at)} by ${by}`);
         break;
       }
       case "remove": {
@@ -149,7 +149,7 @@ io.on("connection", socket => {
         const i = target.entries.findIndex(e => e.id === a.id);
         if (i === -1) return;
         const [gone] = target.entries.splice(i, 1);
-        note(region, `${gone.name} removed from ${ch(at)}`);
+        note(region, `${gone.name} removed from ${ch(at)} by ${by}`);
         break;
       }
       case "rename": {
@@ -157,7 +157,7 @@ io.on("connection", socket => {
         const e = target.entries.find(x => x.id === a.id);
         const name = clean(a.name, 24);
         if (!e || !name || name === e.name) return;
-        note(region, `${e.name} renamed to ${name} in ${ch(at)}`);
+        note(region, `${e.name} renamed to ${name} in ${ch(at)} by ${by}`);
         e.name = name;
         break;
       }
@@ -166,7 +166,7 @@ io.on("connection", socket => {
         const e = target.entries.find(x => x.id === a.id);
         if (!e) return;
         e.at = Date.now();
-        note(region, `${e.name} timer reset in ${ch(at)}`);
+        note(region, `${e.name} timer reset in ${ch(at)} by ${by}`);
         break;
       }
       case "moveUser": {
@@ -177,7 +177,7 @@ io.on("connection", socket => {
         const [moved] = from.entries.splice(i, 1);
         moved.at = Date.now();
         to.entries.push(moved);
-        note(region, `${ch(Number(a.from))} → ${ch(Number(a.to))}: ${moved.name} moved`);
+        note(region, `${moved.name} moved ${ch(Number(a.from))} → ${ch(Number(a.to))} by ${by}`);
         break;
       }
       case "moveGroup": {
@@ -189,7 +189,7 @@ io.on("connection", socket => {
 
         // no room at all — fall back to swapping the two channels
         if (room <= 0) {
-          note(region, `${A} ⇄ ${B} swapped`);
+          note(region, `${A} ⇄ ${B} swapped by ${by}`);
           from.entries.concat(to.entries).forEach(e => { e.at = now; });
           const tmp = to.entries; to.entries = from.entries; from.entries = tmp;
           break;
@@ -200,7 +200,7 @@ io.on("connection", socket => {
         moving.forEach(e => { e.at = now; });
         to.entries = to.entries.concat(moving);
         const left = from.entries.length;
-        note(region, `${A} → ${B}: ${moving.map(e => e.name).join(", ")} moved`
+        note(region, `${moving.map(e => e.name).join(", ")} moved ${A} → ${B} by ${by}`
           + (left ? ` — ${left} stayed on ${A}, ${B} is full` : ""));
         break;
       }
