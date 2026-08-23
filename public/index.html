@@ -2,7 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Channel Tracker</title>
+<link rel="icon" href="/img/crying.jpg">
+<title>Shitters</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Quicksand:wght@500;600;700&family=Poppins:wght@500;600&family=Nunito:wght@600;700&display=swap" rel="stylesheet">
@@ -40,11 +41,11 @@
   header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:26px}
   .logo{
     width:47px;height:47px;flex:none;border-radius:13px;display:grid;place-items:center;
-    background:linear-gradient(160deg,#0d1b26,#0a1119);
-    border:1px solid rgba(34,211,238,.3);
-    box-shadow:0 0 30px rgba(34,211,238,.10) inset,0 6px 20px rgba(0,0,0,.4);
+    background:#0a1119;overflow:hidden;
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 6px 20px rgba(0,0,0,.45);
   }
-  .logo svg{width:26px;height:26px;stroke:var(--cyan);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .logo img{width:100%;height:100%;object-fit:cover;display:block}
   h1{margin:0;font-size:29px;font-weight:800;letter-spacing:.02em;line-height:1}
   .status{margin-top:7px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--green);flex-wrap:wrap}
   .status .sep{color:#2c3d4e}
@@ -107,12 +108,12 @@
   .pct:hover{filter:brightness(1.35)}
   .count{font-size:11px;font-weight:700;color:var(--dim);flex:none}
   .watch{
-    width:21px;height:21px;flex:none;display:grid;place-items:center;
-    font:inherit;font-size:12px;line-height:1;cursor:pointer;border-radius:4px;
+    width:21px;height:21px;flex:none;display:grid;place-items:center;padding:0;
+    font:inherit;font-size:12px;line-height:0;cursor:pointer;border-radius:4px;
     border:1px solid var(--line);background:var(--panel-2);color:var(--dim);transition:.15s;
   }
   .watch:hover{color:var(--amber);border-color:rgba(245,158,11,.55)}
-  .watch svg{width:12px;height:12px;display:block}
+  .watch svg{width:12.5px;height:12.5px;display:block}
   .watch.on{color:var(--amber);border-color:rgba(245,158,11,.75);background:rgba(245,158,11,.16)}
   .ch.full .watch{color:#c9b083;border-color:rgba(245,158,11,.45)}
   .ch.full .watch.on{color:var(--amber)}
@@ -142,12 +143,13 @@
   .count.full{color:var(--red)}
 
   .icon{
-    width:20px;height:20px;flex:none;display:grid;place-items:center;
-    font:inherit;font-size:11.5px;line-height:1;cursor:pointer;border-radius:6px;
+    width:20px;height:20px;flex:none;display:grid;place-items:center;padding:0;
+    font:inherit;font-size:11.5px;line-height:0;cursor:pointer;border-radius:6px;
     border:1px solid var(--line);background:var(--raise);color:var(--dim);transition:.15s;
   }
   .icon:hover{color:var(--text);border-color:#2d3f52}
-  .add{width:22px;height:22px;font-size:13px;flex:none}
+  .icon svg{width:12px;height:12px;display:block}
+  .add{width:22px;height:22px;font-size:14px;line-height:1;flex:none;padding:0 0 1px}
   .add:hover{color:var(--cyan);border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
   .edit{border-color:rgba(34,211,238,.3);color:var(--cyan)}
   .edit:hover{background:rgba(34,211,238,.14);border-color:var(--cyan)}
@@ -310,7 +312,7 @@
     header{gap:12px;margin-bottom:18px}
     h1{font-size:24px}
     .logo{width:40px;height:40px;border-radius:11px}
-    .logo svg{width:21px;height:21px}
+
     .tabs{width:100%;overflow-x:auto;flex-wrap:nowrap;padding:5px;-webkit-overflow-scrolling:touch}
     .tab{padding:8px 13px;flex:none}
     .ch{min-height:76px;border-radius:9px}
@@ -329,7 +331,7 @@
 <div class="sticker-layer" id="stickerLayer" aria-hidden="true"></div>
 <div class="wrap">
   <header>
-    <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+    <div class="logo" aria-hidden="true"><img id="logoImg" src="/img/crying.jpg" alt=""></div>
     <div>
       <h1 id="title">—</h1>
       <div class="status">
@@ -425,6 +427,19 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function pencilSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M15.2 4.6l4.2 4.2"/>'
+    + '<path d="M4.5 19.5l1.1-4.1L16.1 4.9a1.5 1.5 0 0 1 2.1 0l1.4 1.4a1.5 1.5 0 0 1 0 2.1L9.1 18.9z"/>'
+    + '</svg>';
+}
+function crossSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round">'
+    + '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+}
 
 function gripSVG(){
   let dots = "";
@@ -832,7 +847,7 @@ function renderTabs(){
 function paintTitles(){
   document.getElementById("title").textContent = region;
   document.getElementById("logTitle").textContent = region + " ACTIVITY";
-  baseTitle = region + " — Channel Tracker";
+  baseTitle = region + " — Shitters";
   if(!titleTimer) document.title = baseTitle;
 }
 
@@ -1130,12 +1145,12 @@ function row(en,ci){
   r.appendChild(clock);
 
   const ed = document.createElement("button");
-  ed.className = "icon edit"; ed.textContent = "✎"; ed.title = "Rename";
+  ed.className = "icon edit"; ed.innerHTML = pencilSVG(); ed.title = "Rename";
   ed.onclick = () => { editing = {ch:ci,id:en.id}; render() };
   r.appendChild(ed);
 
   const dl = document.createElement("button");
-  dl.className = "icon del"; dl.textContent = "✕"; dl.title = "Remove";
+  dl.className = "icon del"; dl.innerHTML = crossSVG(); dl.title = "Remove";
   dl.onclick = () => send({type:"remove",ch:ci,id:en.id});
   r.appendChild(dl);
   return r;
