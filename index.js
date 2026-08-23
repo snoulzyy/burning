@@ -183,17 +183,25 @@ io.on("connection", socket => {
       case "moveGroup": {
         const from = board[Number(a.from)], to = board[Number(a.to)];
         if (!from || !to || from === to || !from.entries.length) return;
+        const A = ch(Number(a.from)), B = ch(Number(a.to));
         const now = Date.now();
-        if (!to.entries.length) {
-          note(region, `${ch(Number(a.from))} → ${ch(Number(a.to))}: ${from.entries.map(e => e.name).join(", ")} moved`);
-          from.entries.forEach(e => { e.at = now; });
-          to.entries = from.entries;
-          from.entries = [];
-        } else {
-          note(region, `${ch(Number(a.from))} ⇄ ${ch(Number(a.to))} swapped`);
+        const room = CAP - to.entries.length;
+
+        // no room at all — fall back to swapping the two channels
+        if (room <= 0) {
+          note(region, `${A} ⇄ ${B} swapped`);
           from.entries.concat(to.entries).forEach(e => { e.at = now; });
           const tmp = to.entries; to.entries = from.entries; from.entries = tmp;
+          break;
         }
+
+        // otherwise merge in as many as will fit
+        const moving = from.entries.splice(0, Math.min(room, from.entries.length));
+        moving.forEach(e => { e.at = now; });
+        to.entries = to.entries.concat(moving);
+        const left = from.entries.length;
+        note(region, `${A} → ${B}: ${moving.map(e => e.name).join(", ")} moved`
+          + (left ? ` — ${left} stayed on ${A}, ${B} is full` : ""));
         break;
       }
       case "clear": {
