@@ -205,6 +205,39 @@
   .log .sep{color:#3a4c5e}
   .log .msg{color:#a9bcce}
   .log .empty{color:var(--dim)}
+  .emote-btn{
+    font:inherit;font-size:15px;line-height:1;flex:none;width:26px;height:26px;
+    display:grid;place-items:center;cursor:pointer;border-radius:6px;
+    border:1px solid var(--line);background:var(--raise);color:var(--dim);transition:.15s;
+  }
+  .emote-btn:hover{color:var(--amber);border-color:rgba(245,158,11,.5)}
+  .emote-btn[hidden]{display:none}
+  .picker{
+    position:fixed;z-index:85;width:min(330px,calc(100vw - 24px));
+    background:#0a1119;border:1px solid #22303f;border-radius:12px;
+    box-shadow:0 18px 44px rgba(0,0,0,.7);overflow:hidden;
+  }
+  .picker-search{padding:9px 10px;border-bottom:1px solid var(--line-soft)}
+  .picker-search input{
+    width:100%;font:inherit;font-size:12px;color:var(--text);background:#04121a;
+    border:1px solid var(--line);border-radius:6px;padding:6px 9px;
+  }
+  .picker-search input:focus{outline:none;border-color:var(--cyan)}
+  .picker-grid{
+    max-height:250px;overflow-y:auto;padding:8px;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;
+  }
+  .picker-grid::-webkit-scrollbar{width:8px}
+  .picker-grid::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:8px}
+  .picker-grid button{
+    display:grid;place-items:center;height:44px;padding:2px;cursor:pointer;
+    background:none;border:1px solid transparent;border-radius:7px;
+  }
+  .picker-grid button:hover{background:rgba(34,211,238,.10);border-color:rgba(34,211,238,.35)}
+  .picker-grid img{max-width:34px;max-height:34px}
+  .picker-none{padding:14px 12px;font-size:11.5px;color:var(--dim);text-align:center}
+  .emote{height:24px;vertical-align:middle;margin:-2px 1px 0}
+  .emote.big{height:40px}
   .say{display:flex;align-items:center;gap:9px;padding:10px 14px;border-top:1px solid var(--line-soft);background:var(--panel-2)}
   .who-btn{font:inherit;font-size:13px;font-weight:800;color:var(--cyan);background:none;border:0;padding:0;cursor:pointer}
   .who-btn:hover{text-decoration:underline}
@@ -331,6 +364,7 @@
       <button class="who-btn" id="whoBtn" title="Change your display name">Guest</button>
       <span class="sep" style="color:#3a4c5e">·</span>
       <input id="sayInput" placeholder="Message… or 12 weenie / 12 70%" maxlength="200" aria-label="Send a message">
+      <button class="emote-btn" id="emoteBtn" title="Emotes" aria-label="Emotes" hidden>☺</button>
       <span class="tip"><code>12 name</code> adds · <code>12 70%</code> sets burning</span>
     </div>
   </section>
@@ -347,8 +381,11 @@
 <script>
 const CAP = 4;
 const socket = io();
-const region = decodeURIComponent(location.pathname.replace(/^\/|\/$/g, "")).toUpperCase() || "RD1";
+let region = decodeURIComponent(location.pathname.replace(/^\/|\/$/g, "")).toUpperCase() || "RD1";
+let regionList = [];
 
+let boards = {};        // region -> channels
+let logs = {};          // region -> log
 let board = [];
 let log = [];
 let editing = null;      // {ch, id} | {ch, id:"new"}
@@ -358,13 +395,22 @@ let picked = null;      // {ch, id} or {ch, group:true} — tap-to-move, for tou
 let me = "Guest";
 try { me = localStorage.getItem("ct:name") || "Guest" } catch (e) {}
 
-// channels this browser is watching for a free slot
-let watching = new Set();
-let firstSync = true;
-const watchKey = () => "ct:watch:" + region;
-try { watching = new Set(JSON.parse(localStorage.getItem(watchKey()) || "[]")) } catch (e) {}
-function saveWatch(){
-  try { localStorage.setItem(watchKey(), JSON.stringify([...watching])) } catch (e) {}
+// channels this browser is watching for a free slot, kept per region
+const watches = {};
+const seenRegion = {};
+const watchKey = r => "ct:watch:" + r;
+function watchesFor(r){
+  if(!watches[r]){
+    let set = new Set();
+    try { set = new Set(JSON.parse(localStorage.getItem(watchKey(r)) || "[]")) } catch(e){}
+    watches[r] = set;
+  }
+  return watches[r];
+}
+let watching = watchesFor(region);
+function saveWatch(r){
+  const key = r || region;
+  try { localStorage.setItem(watchKey(key), JSON.stringify([...watchesFor(key)])) } catch(e){}
 }
 
 /* =========================================================================
@@ -488,7 +534,139 @@ function stamp(ts){
   const d = new Date(ts);
   return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0");
 }
-const send = a => socket.emit("action", Object.assign({by:me}, a));
+const send = a => socket.emit("action", Object.assign({by:me, region}, a));
+
+/* =========================================================================
+   7TV EMOTES
+   -------------------------------------------------------------------------
+   Paste your emote set id below and those emotes render in chat.
+   Find it at 7tv.app -> your emote set -> the id is the last part of the URL:
+     https://7tv.app/emote-sets/01H2ABCDEFGHJKMNPQRSTVWXYZ
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ this bit
+   Leave it empty and nothing changes.
+   ========================================================================= */
+const SEVENTV_SET = "01FW12Y4WG00023D6NVRA4DJAM";
+
+const emotes = {};          // name -> image url
+let emotesReady = false;
+
+async function loadEmotes(){
+  if(!SEVENTV_SET) return;
+  try {
+    const res = await fetch("https://7tv.io/v3/emote-sets/" + SEVENTV_SET);
+    if(!res.ok) { console.warn("7TV: set not found (" + res.status + ")"); return; }
+    const data = await res.json();
+    (data.emotes || []).forEach(e => {
+      const host = e.data && e.data.host;
+      if(!host || !host.url) return;
+      const files = host.files || [];
+      const pick = files.find(f => f.name === "2x.webp")
+                || files.find(f => f.name === "1x.webp")
+                || files.find(f => /\.webp$/.test(f.name))
+                || files[0];
+      if(!pick) return;
+      emotes[e.name] = (host.url.startsWith("//") ? "https:" : "") + host.url + "/" + pick.name;
+    });
+    emotesReady = Object.keys(emotes).length > 0;
+    if(emotesReady){
+      const btn = document.getElementById("emoteBtn");
+      if(btn) btn.hidden = false;
+      renderLog();
+    }
+  } catch(err){
+    console.warn("7TV: could not load emotes", err);
+  }
+}
+loadEmotes();
+
+/* ---------------- emote picker ---------------- */
+let pickerEl = null;
+
+function closePicker(){ if(pickerEl){ pickerEl.remove(); pickerEl = null } }
+
+function insertEmote(name){
+  const inp = document.getElementById("sayInput");
+  const cur = inp.value;
+  inp.value = cur + (cur && !/\s$/.test(cur) ? " " : "") + name + " ";
+  inp.focus();
+}
+
+function openPicker(){
+  if(pickerEl){ closePicker(); return; }
+  const btn = document.getElementById("emoteBtn");
+  const box = document.createElement("div");
+  box.className = "picker";
+  box.onclick = e => e.stopPropagation();
+  box.innerHTML = '<div class="picker-search">'
+    + '<input type="text" placeholder="search emotes…" aria-label="Search emotes"></div>'
+    + '<div class="picker-grid"></div>';
+
+  const grid = box.querySelector(".picker-grid");
+  const search = box.querySelector("input");
+  const names = Object.keys(emotes).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  function paint(filter){
+    const q = (filter || "").toLowerCase();
+    const show = q ? names.filter(n => n.toLowerCase().includes(q)) : names;
+    grid.innerHTML = "";
+    if(!show.length){
+      const none = document.createElement("div");
+      none.className = "picker-none";
+      none.textContent = "nothing matches that";
+      grid.appendChild(none);
+      return;
+    }
+    show.forEach(n => {
+      const b = document.createElement("button");
+      b.title = n;
+      const img = document.createElement("img");
+      img.src = emotes[n]; img.alt = n; img.loading = "lazy";
+      b.appendChild(img);
+      b.onclick = () => insertEmote(n);
+      grid.appendChild(b);
+    });
+  }
+  paint("");
+  search.oninput = () => paint(search.value);
+  search.onkeydown = e => { if(e.key === "Escape") closePicker(); };
+
+  document.body.appendChild(box);
+  const r = btn.getBoundingClientRect();
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(10, Math.min(r.right - w, window.innerWidth - w - 10)) + "px";
+  box.style.top = (r.top - h - 8 > 10 ? r.top - h - 8 : r.bottom + 8) + "px";
+  pickerEl = box;
+  search.focus();
+}
+
+document.addEventListener("click", closePicker);
+document.addEventListener("keydown", e => { if(e.key === "Escape") closePicker(); });
+window.addEventListener("resize", closePicker);
+
+document.getElementById("emoteBtn").onclick = e => { e.stopPropagation(); openPicker(); };
+
+// turns "hello PogU" into text + <img>, never using innerHTML on user text
+function messageNodes(text){
+  const frag = document.createDocumentFragment();
+  if(!emotesReady){ frag.appendChild(document.createTextNode(text)); return frag; }
+  const parts = text.split(/(\s+)/);
+  const words = parts.filter(w => w.trim());
+  const allEmotes = words.length > 0 && words.length <= 3 && words.every(w => emotes[w]);
+  parts.forEach(w => {
+    if(emotes[w]){
+      const img = document.createElement("img");
+      img.className = "emote" + (allEmotes ? " big" : "");
+      img.src = emotes[w];
+      img.alt = w;
+      img.title = w;
+      img.loading = "lazy";
+      frag.appendChild(img);
+    } else {
+      frag.appendChild(document.createTextNode(w));
+    }
+  });
+  return frag;
+}
 
 /* ---------------- help panel ---------------- */
 const HELP_HTML = `
@@ -517,6 +695,9 @@ const HELP_HTML = `
   <p>Click the <span class="k">☆</span> on a 4/4 channel. When a slot opens you get a
      sound, a flashing tab, and a popup — so you don't have to watch the screen.</p>
   <p>Toggle the sound with the <span class="k">🔊</span> button at the bottom.</p>
+
+  <h5>CHAT</h5>
+  <p>7TV emotes work here — type the name, or hit the <span class="k">☺</span> button next to the message box to browse them.</p>
 
   <h5>GOOD TO KNOW</h5>
   <p>Everyone shares one board — changes show up for everybody straight away.</p>
@@ -582,6 +763,7 @@ function alarm(){
 let titleTimer = null, baseTitle = null;
 function flashTitle(msg){
   if(baseTitle === null) baseTitle = document.title;
+  
   clearInterval(titleTimer);
   let on = false;
   titleTimer = setInterval(() => {
@@ -619,58 +801,108 @@ socket.on("disconnect", () => {
 socket.on("denied", msg => { document.getElementById("connText").textContent = msg });
 
 socket.on("hello", info => {
-  document.getElementById("title").textContent = info.region;
-  document.getElementById("logTitle").textContent = info.region + " ACTIVITY";
-  document.title = info.region + " — Channel Tracker";
+  region = info.region;
+  regionList = info.regions;
+  watching = watchesFor(region);
+  renderTabs();
+  paintTitles();
+});
+
+function renderTabs(){
   const tabs = document.getElementById("tabs");
   tabs.innerHTML = "";
-  info.regions.forEach(r => {
+  regionList.forEach(r => {
     if(r.enabled){
-      const a = document.createElement("a");
-      a.className = "tab"; a.href = "/" + r.id.toLowerCase(); a.textContent = r.id;
-      if(r.id === info.region) a.setAttribute("aria-current","page");
-      tabs.appendChild(a);
+      const b = document.createElement("button");
+      b.className = "tab";
+      b.textContent = r.id;
+      if(r.id === region) b.setAttribute("aria-current","page");
+      b.onclick = () => switchTo(r.id);
+      tabs.appendChild(b);
     } else {
-      const s = document.createElement("span");
-      s.className = "tab soon"; s.textContent = r.id; s.title = "Not open yet";
-      tabs.appendChild(s);
+      const sp = document.createElement("span");
+      sp.className = "tab soon"; sp.textContent = r.id; sp.title = "Not open yet";
+      tabs.appendChild(sp);
     }
   });
+}
+
+function paintTitles(){
+  document.getElementById("title").textContent = region;
+  document.getElementById("logTitle").textContent = region + " ACTIVITY";
+  baseTitle = region + " — Channel Tracker";
+  if(!titleTimer) document.title = baseTitle;
+}
+
+// everything is already in memory, so this is instant
+function switchTo(id, skipHistory){
+  if(id === region) return;
+  region = id;
+  watching = watchesFor(region);
+  editing = null; picked = null; pending = null;
+  closeMenu();
+  board = boards[region] || [];
+  log = logs[region] || [];
+  socket.emit("view", region);
+  if(!skipHistory) history.pushState({ region }, "", "/" + region.toLowerCase());
+  renderTabs();
+  paintTitles();
+  paintPresence();
+  render();
+  document.querySelector(".wrap").scrollIntoView({ block: "start" });
+}
+
+window.addEventListener("popstate", () => {
+  const id = decodeURIComponent(location.pathname.replace(/^\/|\/$/g, "")).toUpperCase();
+  if(id && id !== region && regionList.some(r => r.enabled && r.id === id)) switchTo(id, true);
 });
 
-socket.on("presence", n => {
-  document.getElementById("online").textContent = n + (n === 1 ? " watching" : " watching");
+const presenceCounts = {};
+socket.on("presence", p => {
+  const r = (p && p.region) || region;
+  presenceCounts[r] = (p && typeof p.n === "number") ? p.n : 0;
+  if(r === region) paintPresence();
 });
+function paintPresence(){
+  document.getElementById("online").textContent = (presenceCounts[region] || 0) + " watching";
+}
 
 socket.on("sync", s => {
-  checkWatched(s.channels);
+  const r = s.region || region;
+  checkWatched(r, s.channels);
+  boards[r] = s.channels;
+  logs[r] = s.log;
+  if(r !== region) return;                  // background region, nothing to redraw
   if(editing){ pending = s; return; }
-  board = s.channels; log = s.log;
+  board = boards[r]; log = logs[r];
   render();
 });
 
-function checkWatched(next){
-  if(!watching.size) return;
+function checkWatched(r, next){
+  const set = watchesFor(r);
+  const first = !seenRegion[r];
+  seenRegion[r] = true;
+  if(!set.size) return;
   let changed = false;
-  [...watching].forEach(idx => {
+  [...set].forEach(idx => {
     const c = next[idx];
-    if(!c) { watching.delete(idx); changed = true; return; }
+    if(!c) { set.delete(idx); changed = true; return; }
     if(c.entries.length >= CAP) return;
-    watching.delete(idx); changed = true;
-    if(firstSync) return;                       // don't shout on page load
-    const msg = chLabel(idx) + " has a free slot (" + c.pct + "% burning)";
+    set.delete(idx); changed = true;
+    if(first) return;                           // don't shout on page load
+    const msg = r + " " + chLabel(idx) + " has a free slot (" + c.pct + "% burning)";
     alarm();
-    flashTitle(chLabel(idx) + " open");
+    flashTitle(r + " " + chLabel(idx) + " open");
     try {
       if(window.Notification && Notification.permission === "granted"){
-        const n = new Notification(region + " — slot open", { body: msg, requireInteraction: true });
+        const n = new Notification(r + " — slot open", { body: msg, requireInteraction: true });
         n.onclick = () => { window.focus(); stopFlash(); n.close(); };
       }
     } catch(e){}
     toast(msg);
   });
-  firstSync = false;
-  if(changed) saveWatch();
+  if(changed) saveWatch(r);
+  if(r === region) render();
 }
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
@@ -783,7 +1015,7 @@ function card(c,i){
           if(window.Notification && Notification.permission === "default") Notification.requestPermission();
         } catch(err){}
       }
-      saveWatch(); render();
+      saveWatch(region); render();
     };
     head.appendChild(w);
   }
@@ -968,7 +1200,9 @@ function paintLog(el, items, emptyMsg){
     const src = line.querySelector(".src");
     src.textContent = item.who ? item.who : region + " System";
     if(item.who) src.classList.add("user");
-    line.querySelector(".msg").textContent = item.msg;
+    const msgEl = line.querySelector(".msg");
+    if(item.who) msgEl.appendChild(messageNodes(item.msg));
+    else msgEl.textContent = item.msg;
     el.appendChild(line);
   });
   if(atBottom) el.scrollTop = el.scrollHeight;
@@ -1022,7 +1256,7 @@ sayInput.addEventListener("keydown", e => {
     return;
   }
 
-  socket.emit("chat", {who:me, text:v});
+  socket.emit("chat", {who:me, text:v, region});
   sayInput.value = "";
 });
 
