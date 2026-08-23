@@ -58,11 +58,12 @@
   .tab{
     font:inherit;font-size:12px;font-weight:600;letter-spacing:.07em;
     color:var(--dim);text-decoration:none;border-radius:8px;padding:8px 15px;
+    background:none;border:0;cursor:pointer;-webkit-appearance:none;appearance:none;
     transition:color .15s,background .15s;
   }
   .tab:hover{color:var(--text);background:rgba(255,255,255,.035)}
   .tab[aria-current="page"]{background:var(--cyan);color:#04202a;font-weight:800}
-  .tab.soon{color:#33465a;cursor:not-allowed}
+  .tab.soon{color:#33465a;cursor:not-allowed;background:none}
   .tab.soon:hover{background:none;color:#33465a}
 
   /* ---------------- board ---------------- */
@@ -355,7 +356,7 @@
         <div class="log" id="log"></div>
       </div>
       <div class="pane pane-chat">
-        <div class="pane-head"><span class="dot"></span><span>CHAT</span></div>
+        <div class="pane-head"><span class="dot"></span><span>CHAT</span><span class="tip" style="letter-spacing:0">all regions</span></div>
         <div class="log" id="chatLog"></div>
       </div>
     </div>
@@ -385,7 +386,8 @@ let region = decodeURIComponent(location.pathname.replace(/^\/|\/$/g, "")).toUpp
 let regionList = [];
 
 let boards = {};        // region -> channels
-let logs = {};          // region -> log
+let logs = {};          // region -> activity log
+let chat = [];          // one chat, shared by every region
 let board = [];
 let log = [];
 let editing = null;      // {ch, id} | {ch, id:"new"}
@@ -858,6 +860,11 @@ window.addEventListener("popstate", () => {
 });
 
 const presenceCounts = {};
+socket.on("chatlog", arr => {
+  chat = Array.isArray(arr) ? arr : [];
+  renderLog();
+});
+
 socket.on("presence", p => {
   const r = (p && p.region) || region;
   presenceCounts[r] = (p && typeof p.n === "number") ? p.n : 0;
@@ -1209,9 +1216,9 @@ function paintLog(el, items, emptyMsg){
 }
 
 function renderLog(){
-  // anything the board did lands on the left, anything people typed on the right
+  // left: what happened on this region. right: chat, shared across all of them
   paintLog(logEl,  log.filter(x => !x.who), "No changes yet. Every board change shows up here.");
-  paintLog(chatEl, log.filter(x =>  x.who), "No messages yet.");
+  paintLog(chatEl, chat, "No messages yet.");
 }
 
 const sayInput = document.getElementById("sayInput");

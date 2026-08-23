@@ -30,6 +30,19 @@ let state = {};
 function hydrate(saved) {
   if (saved && typeof saved === "object") state = saved;
   live.forEach(r => { if (!state[r]) state[r] = blankRegion(); });
+
+  // chat is shared across every region; activity stays per region
+  if (!Array.isArray(state.chat)) state.chat = [];
+  // pull any chat lines out of the old per-region logs, once
+  live.forEach(r => {
+    const keep = [];
+    state[r].log.forEach(entry => {
+      if (entry && entry.who) state.chat.push(entry); else keep.push(entry);
+    });
+    state[r].log = keep;
+  });
+  state.chat.sort((a, b) => a.t - b.t);
+  if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
 
 const persist = () => storage.save(state);
@@ -80,6 +93,9 @@ function snapshot(region) {
 function broadcast(region) {
   io.to(region).emit("sync", snapshot(region));
 }
+function broadcastChat() {
+  io.emit("chatlog", state.chat);
+}
 function presence(region) {
   io.to(region).emit("presence", { region, n: counts[region] || 0 });
 }
@@ -99,6 +115,7 @@ io.on("connection", socket => {
 
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
     live.forEach(x => socket.emit("sync", snapshot(x)));
+    socket.emit("chatlog", state.chat);
     presence(id);
   });
 
@@ -234,16 +251,14 @@ io.on("connection", socket => {
   });
 
   socket.on("chat", m => {
-    if (!m) return;
-    const region = (clean(m.region, 12).toUpperCase() || viewing);
-    const r = byId(region);
-    if (!r || !r.enabled) return;
+    if (!m || !viewing) return;
     const who = clean(m.who, 24) || "Guest";
     const text = clean(m.text, 200);
     if (!text) return;
-    note(region, text, who);
+    state.chat.push({ t: Date.now(), who, msg: text });
+    if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
     persist();
-    broadcast(region);
+    broadcastChat();
   });
 
   socket.on("disconnect", () => {
