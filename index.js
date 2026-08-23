@@ -12,12 +12,10 @@ const LOG_MAX = 300;
 // Add a region here and it gets its own URL, its own board, its own chat.
 // Flip `enabled` to true when you're ready to open it up.
 const REGIONS = [
-  { id: "B1",   enabled: false },
-  { id: "B2Z1", enabled: false },
   { id: "RD1",  enabled: true  },
   { id: "RD4",  enabled: false },
-  { id: "RD6",  enabled: false },
-  { id: "RD7",  enabled: false }
+  { id: "GOB1", enabled: true  },
+  { id: "GOB5", enabled: true  }
 ];
 const live = REGIONS.filter(r => r.enabled).map(r => r.id);
 const byId = id => REGIONS.find(r => r.id === id);
