@@ -89,8 +89,12 @@
     border-bottom:1px solid transparent;
   }
   .ch.occupied .ch-head,.ch.full .ch-head{border-bottom-color:var(--line-soft)}
-  .handle{color:#41576c;cursor:grab;font-size:12px;letter-spacing:-2px;user-select:none;padding-right:2px}
-  .handle:hover{color:var(--cyan)}
+  .handle{
+    display:grid;place-items:center;width:15px;height:22px;flex:none;
+    color:var(--amber);opacity:.8;cursor:grab;user-select:none;transition:opacity .15s;
+  }
+  .handle:hover{opacity:1}
+  .handle svg{width:11px;height:17px;display:block}
   .handle:active{cursor:grabbing}
   .ch-name{font-size:12.5px;font-weight:700;letter-spacing:.1em;color:var(--label)}
   .ch.occupied .ch-name,.ch.full .ch-name{color:#fff}
@@ -286,7 +290,7 @@
     </div>
     <span class="sticker-row" id="stickHead"></span>
     <div class="spacer"></div>
-    <button class="ghost help-btn" id="helpBtn" title="How this works">? how to use</button>
+    <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
     <nav class="tabs" id="tabs"></nav>
   </header>
 
@@ -346,6 +350,14 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function gripSVG(){
+  let dots = "";
+  [4, 11, 18].forEach(y => [3.5, 8.5].forEach(x => {
+    dots += '<circle cx="' + x + '" cy="' + y + '" r="1.6" fill="currentColor"/>';
+  }));
+  return '<svg viewBox="0 0 12 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' + dots + '</svg>';
+}
 
 function starSVG(filled){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
@@ -682,7 +694,7 @@ function card(c,i){
 
   if(c.entries.length){
     const h = document.createElement("span");
-    h.className = "handle"; h.textContent = "⋮⋮"; h.title = "Drag the whole channel";
+    h.className = "handle"; h.innerHTML = gripSVG(); h.title = "Drag the whole channel";
     h.draggable = true;
     h.ondragstart = e => {
       e.dataTransfer.effectAllowed = "move";
