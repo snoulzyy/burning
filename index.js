@@ -74,30 +74,50 @@ function offline(id) {
 /* ---------------- realtime ---------------- */
 const counts = {};
 
+function snapshot(region) {
+  return { region, channels: state[region].channels, log: state[region].log };
+}
 function broadcast(region) {
-  io.to(region).emit("sync", state[region]);
+  io.to(region).emit("sync", snapshot(region));
 }
 function presence(region) {
-  io.to(region).emit("presence", counts[region] || 0);
+  io.to(region).emit("presence", { region, n: counts[region] || 0 });
 }
 
 io.on("connection", socket => {
-  let region = null;
+  let viewing = null;   // the tab they're looking at right now
 
   socket.on("join", raw => {
     const id = clean(raw, 12).toUpperCase();
     const r = byId(id);
     if (!r || !r.enabled) return socket.emit("denied", "Region not available");
-    region = id;
-    socket.join(region);
-    counts[region] = (counts[region] || 0) + 1;
-    socket.emit("hello", { region, regions: REGIONS, cap: CAP, channels: CHANNELS });
-    socket.emit("sync", state[region]);
-    presence(region);
+
+    // subscribe to all of them, so switching tabs needs no round trip
+    live.forEach(x => socket.join(x));
+    viewing = id;
+    counts[id] = (counts[id] || 0) + 1;
+
+    socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
+    live.forEach(x => socket.emit("sync", snapshot(x)));
+    presence(id);
+  });
+
+  // just changing tabs — no reload, only the watcher count moves
+  socket.on("view", raw => {
+    const id = clean(raw, 12).toUpperCase();
+    const r = byId(id);
+    if (!r || !r.enabled || id === viewing) return;
+    if (viewing) { counts[viewing] = Math.max(0, (counts[viewing] || 1) - 1); presence(viewing); }
+    viewing = id;
+    counts[id] = (counts[id] || 0) + 1;
+    presence(id);
   });
 
   socket.on("action", a => {
-    if (!region || !a || typeof a !== "object") return;
+    if (!a || typeof a !== "object") return;
+    const region = (clean(a.region, 12).toUpperCase() || viewing);
+    const r = byId(region);
+    if (!r || !r.enabled) return;
     const board = state[region].channels;
     const by = clean(a.by, 24) || "someone";
     const at = Number(a.ch);
@@ -214,7 +234,10 @@ io.on("connection", socket => {
   });
 
   socket.on("chat", m => {
-    if (!region || !m) return;
+    if (!m) return;
+    const region = (clean(m.region, 12).toUpperCase() || viewing);
+    const r = byId(region);
+    if (!r || !r.enabled) return;
     const who = clean(m.who, 24) || "Guest";
     const text = clean(m.text, 200);
     if (!text) return;
@@ -224,9 +247,9 @@ io.on("connection", socket => {
   });
 
   socket.on("disconnect", () => {
-    if (!region) return;
-    counts[region] = Math.max(0, (counts[region] || 1) - 1);
-    presence(region);
+    if (!viewing) return;
+    counts[viewing] = Math.max(0, (counts[viewing] || 1) - 1);
+    presence(viewing);
   });
 });
 
