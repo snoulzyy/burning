@@ -116,23 +116,12 @@
   @media(max-width:700px){.bench-hint{display:none}}
 
   /* ---------------- next up (floats over the board) ---------------- */
-  .next{
-    position:fixed;right:14px;top:120px;width:198px;z-index:45;
-    background:rgba(10,17,25,.95);backdrop-filter:blur(8px);
-    border:1px solid rgba(34,211,238,.35);border-radius:12px;overflow:hidden;
-    box-shadow:0 16px 40px rgba(0,0,0,.6);
+  .nextmenu{
+    position:fixed;z-index:60;width:212px;padding:9px;border-radius:12px;
+    background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
   }
-  .next[hidden]{display:none}
-  .next-head{
-    display:flex;align-items:center;padding:9px 11px;border-bottom:1px solid var(--line-soft);
-    font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan);
-  }
-  .next-close{
-    margin-left:auto;font:inherit;font-size:12px;line-height:1;color:var(--dim);
-    background:none;border:0;cursor:pointer;padding:0 1px;
-  }
-  .next-close:hover{color:var(--text)}
-  .next-body{display:flex;flex-direction:column;padding:6px;max-height:52vh;overflow-y:auto}
+  .nextmenu h4{margin:0 0 7px;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
+  .next-body{display:flex;flex-direction:column;max-height:270px;overflow-y:auto}
   .next-body::-webkit-scrollbar{width:7px}
   .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .next-row{
@@ -144,21 +133,14 @@
   .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
   .next-row .n-slots{margin-left:auto;font-size:10px;color:var(--dim)}
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
-  .next-tab{
-    position:fixed;right:14px;top:120px;z-index:44;
-    font:inherit;font-size:10.5px;font-weight:800;letter-spacing:.14em;
-    color:var(--cyan);background:rgba(10,17,25,.95);backdrop-filter:blur(8px);
-    border:1px solid rgba(34,211,238,.35);border-radius:9px;padding:8px 11px;cursor:pointer;
-    box-shadow:0 10px 26px rgba(0,0,0,.5);
+  .movebtn{
+    width:20px;height:20px;flex:none;display:grid;place-items:center;padding:0;
+    border-radius:5px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.08);
+    color:var(--cyan);cursor:pointer;line-height:0;transition:.15s;
   }
-  .next-tab:hover{background:rgba(34,211,238,.12)}
-  .next-tab[hidden]{display:none}
+  .movebtn:hover{background:rgba(34,211,238,.2);border-color:var(--cyan)}
+  .movebtn svg{width:12px;height:12px;display:block}
   .ch.flash{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(34,211,238,.5)}
-  @media(max-width:820px){
-    .next{right:10px;left:10px;width:auto;top:auto;bottom:14px}
-    .next-body{max-height:38vh}
-    .next-tab{right:10px;bottom:14px;top:auto}
-  }
 
 /* ---------------- board ---------------- */
   .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
@@ -443,11 +425,6 @@
 
   <div class="grid" id="grid"></div>
 
-  <button class="next-tab" id="nextTab" title="Recommended channels" hidden>NEXT UP</button>
-  <aside class="next" id="next">
-    <div class="next-head">NEXT UP<button class="next-close" id="nextClose" aria-label="Close">✕</button></div>
-    <div class="next-body" id="nextBody"></div>
-  </aside>
 
   <section class="chat">
     <div class="panes">
@@ -515,6 +492,13 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function chevron(dir){
+  const d = dir === "left" ? "M14.5 5.5L9 12l5.5 6.5" : "M9.5 5.5L15 12l-5.5 6.5";
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="' + d + '"/></svg>';
+}
 
 function pencilSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
@@ -1000,94 +984,82 @@ socket.on("sync", s => {
 
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
-/* ---------------- next up panel open/close ---------------- */
-let nextOpen = true;
-try { nextOpen = localStorage.getItem("ct:next") !== "off" } catch(e){}
-if(window.innerWidth < 1180 && localStorage.getItem("ct:next") === null) nextOpen = false;
-
-function paintNextPanel(){
-  const panel = document.getElementById("next");
-  const tab = document.getElementById("nextTab");
-  if(!panel || !tab) return;
-  panel.hidden = !nextOpen;
-  tab.hidden = nextOpen;
-}
-function setNextOpen(v){
-  nextOpen = v;
-  try { localStorage.setItem("ct:next", v ? "on" : "off") } catch(e){}
-  paintNextPanel();
-  if(v) renderNext();
-}
-document.getElementById("nextTab").onclick = () => setNextOpen(true);
-document.getElementById("nextClose").onclick = () => setNextOpen(false);
-paintNextPanel();
-
 /* ---------------- next up ----------------
    Channels worth moving to: must have room, ranked by burning % first,
    emptier ones ahead of busier ones at the same percentage.
    -------------------------------------------------------------------------- */
 const NEXT_COUNT = 8;
 
-function rankChannels(){
+function rankChannels(skipIdx){
   return board
     .map((c, idx) => ({ idx, pct: c.pct, taken: c.entries.length }))
-    .filter(c => c.taken < CAP)
+    .filter(c => c.taken < CAP && c.idx !== skipIdx)
     .sort((a, b) => (b.pct - a.pct) || (a.taken - b.taken) || (a.idx - b.idx))
     .slice(0, NEXT_COUNT);
 }
 
-function renderNext(){
-  const body = document.getElementById("nextBody");
-  if(!body || !nextOpen) return;
-  const picks = rankChannels();
-  body.innerHTML = "";
+function openNextMenu(anchor, fromIdx){
+  closeMenu();
+  const picks = rankChannels(fromIdx);
+
+  const m = document.createElement("div");
+  m.className = "nextmenu";
+  m.onclick = e => e.stopPropagation();
+
+  const h = document.createElement("h4");
+  h.textContent = "MOVE TO";
+  m.appendChild(h);
+
+  const body = document.createElement("div");
+  body.className = "next-body";
 
   if(!picks.length){
     const e = document.createElement("div");
     e.className = "next-empty";
-    e.textContent = "Every channel is full.";
+    e.textContent = "Nowhere with room right now.";
     body.appendChild(e);
-    return;
+  } else {
+    picks.forEach(c => {
+      const row = document.createElement("button");
+      row.className = "next-row";
+      row.title = "Move everyone on " + chLabel(fromIdx) + " to " + chLabel(c.idx);
+
+      const nm = document.createElement("span");
+      nm.className = "n-ch";
+      nm.textContent = chLabel(c.idx);
+      row.appendChild(nm);
+
+      const pct = document.createElement("span");
+      pct.className = "n-pct";
+      const col = pctColor(c.pct);
+      pct.textContent = c.pct + "%";
+      pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
+      row.appendChild(pct);
+
+      const slots = document.createElement("span");
+      slots.className = "n-slots";
+      slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
+      row.appendChild(slots);
+
+      row.onclick = () => {
+        closeMenu();
+        send({ type:"moveGroup", from: fromIdx, to: c.idx });
+      };
+      body.appendChild(row);
+    });
   }
 
-  picks.forEach(c => {
-    const row = document.createElement("button");
-    row.className = "next-row";
-    row.title = pickedPerson ? "Put them on " + chLabel(c.idx) : "Jump to " + chLabel(c.idx);
+  m.appendChild(body);
+  document.body.appendChild(m);
 
-    const nm = document.createElement("span");
-    nm.className = "n-ch";
-    nm.textContent = chLabel(c.idx);
-    row.appendChild(nm);
-
-    const pct = document.createElement("span");
-    pct.className = "n-pct";
-    const col = pctColor(c.pct);
-    pct.textContent = c.pct + "%";
-    pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
-    row.appendChild(pct);
-
-    const slots = document.createElement("span");
-    slots.className = "n-slots";
-    slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
-    row.appendChild(slots);
-
-    row.onclick = () => {
-      if(pickedPerson){
-        send({ type:"assign", ch:c.idx, pid:pickedPerson });
-        pickedPerson = null;
-        renderBench();
-        return;
-      }
-      const card = grid.children[c.idx];
-      if(card){
-        card.scrollIntoView({ block:"center", behavior:"smooth" });
-        card.classList.add("flash");
-        setTimeout(() => card.classList.remove("flash"), 1200);
-      }
-    };
-    body.appendChild(row);
-  });
+  const r = anchor.getBoundingClientRect();
+  const w = m.offsetWidth, hh = m.offsetHeight;
+  let left = Math.min(r.left, window.innerWidth - w - 10);
+  let top = r.bottom + 6;
+  if(top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 6);
+  m.style.left = Math.max(8, left) + "px";
+  m.style.top = top + "px";
+  menuEl = m;
 }
 
 /* ---------------- the bench ---------------- */
@@ -1223,7 +1195,6 @@ function render(){
   renderLog();
   renderHint();
   renderBench();
-  renderNext();
 }
 
 function renderHint(){
@@ -1283,6 +1254,15 @@ function card(c,i){
   p.style.color = col; p.style.background = col+"20"; p.style.borderColor = col+"55";
   p.onclick = e => { e.stopPropagation(); openPctMenu(p, i) };
   head.appendChild(p);
+
+  if(c.entries.length){
+    const mv = document.createElement("button");
+    mv.className = "movebtn";
+    mv.innerHTML = chevron("right");
+    mv.title = "Move this channel somewhere better";
+    mv.onclick = e => { e.stopPropagation(); openNextMenu(mv, i); };
+    head.appendChild(mv);
+  }
 
   if(c.pctAt){
     const t = document.createElement("span");
