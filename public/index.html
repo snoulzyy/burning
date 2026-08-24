@@ -120,7 +120,20 @@
     position:fixed;z-index:60;width:212px;padding:9px;border-radius:12px;
     background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
   }
-  .nextmenu h4{margin:0 0 7px;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
+  .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+  .nextmenu h4{margin:0;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
+  .grp{display:flex;align-items:center;gap:3px;margin-left:auto}
+  .grp span{font-size:10px;color:var(--dim);letter-spacing:.06em}
+  .grp b{font-size:11.5px;color:var(--text);min-width:12px;text-align:center}
+  .grp button{
+    width:17px;height:17px;display:grid;place-items:center;padding:0;line-height:0;
+    font:inherit;font-size:12px;color:var(--dim);cursor:pointer;
+    background:var(--raise);border:1px solid var(--line);border-radius:4px;
+  }
+  .grp button:hover{color:var(--cyan);border-color:rgba(34,211,238,.5)}
+  .n-soon{margin-left:auto;font-size:10px;color:var(--amber);white-space:nowrap}
+  .next-row.soon{opacity:.9}
+  .next-row.soon .n-ch{color:var(--amber)}
   .next-body{
     display:flex;flex-direction:column;max-height:300px;overflow-y:auto;overscroll-behavior:contain;
   }
@@ -992,14 +1005,34 @@ function flush(){ if(pending){ board = pending.channels; log = pending.log; pend
    Channels worth moving to: must have room, ranked by burning % first,
    emptier ones ahead of busier ones at the same percentage.
    -------------------------------------------------------------------------- */
-const NEXT_COUNT = 8;
+let groupCount = 3;           // how many groups you're placing = how many channels to show
+try { groupCount = Math.min(10, Math.max(1, parseInt(localStorage.getItem("ct:groups"), 10) || 3)) } catch(e){}
+function setGroupCount(n, anchor, fromIdx){
+  groupCount = Math.min(10, Math.max(1, n));
+  try { localStorage.setItem("ct:groups", groupCount) } catch(e){}
+  openNextMenu(anchor, fromIdx);
+}
+
+const FREEING_MINUTES = 35;   // a full channel this old counts as "about to open"
 
 function rankChannels(skipIdx){
+  const now = Date.now();
   return board
-    .map((c, idx) => ({ idx, pct: c.pct, taken: c.entries.length }))
-    .filter(c => c.taken < CAP && c.idx !== skipIdx)
-    .sort((a, b) => (b.pct - a.pct) || (a.taken - b.taken) || (a.idx - b.idx))
-    .slice(0, NEXT_COUNT);
+    .map((c, idx) => {
+      const oldest = c.entries.length
+        ? Math.max(...c.entries.map(e => now - e.at))
+        : 0;
+      return {
+        idx,
+        pct: c.pct,
+        taken: c.entries.length,
+        mins: Math.floor(oldest / 60000),
+        soon: c.entries.length >= CAP && oldest >= FREEING_MINUTES * 60000
+      };
+    })
+    .filter(c => c.idx !== skipIdx && (c.taken < CAP || c.soon))
+    .sort((a, b) => (b.pct - a.pct) || (a.taken - b.taken) || (b.mins - a.mins) || (a.idx - b.idx))
+    .slice(0, groupCount);
 }
 
 function openNextMenu(anchor, fromIdx){
@@ -1010,9 +1043,27 @@ function openNextMenu(anchor, fromIdx){
   m.className = "nextmenu";
   m.onclick = e => e.stopPropagation();
 
+  const head = document.createElement("div");
+  head.className = "mhead";
   const h = document.createElement("h4");
   h.textContent = "MOVE TO";
-  m.appendChild(h);
+  head.appendChild(h);
+
+  const grp = document.createElement("div");
+  grp.className = "grp";
+  const lbl = document.createElement("span");
+  lbl.textContent = "GROUPS";
+  const minus = document.createElement("button");
+  minus.textContent = "−"; minus.title = "Show fewer";
+  const num = document.createElement("b");
+  num.textContent = groupCount;
+  const plus = document.createElement("button");
+  plus.textContent = "+"; plus.title = "Show more";
+  minus.onclick = e => { e.stopPropagation(); setGroupCount(groupCount - 1, anchor, fromIdx); };
+  plus.onclick  = e => { e.stopPropagation(); setGroupCount(groupCount + 1, anchor, fromIdx); };
+  grp.append(lbl, minus, num, plus);
+  head.appendChild(grp);
+  m.appendChild(head);
 
   const body = document.createElement("div");
   body.className = "next-body";
@@ -1025,8 +1076,10 @@ function openNextMenu(anchor, fromIdx){
   } else {
     picks.forEach(c => {
       const row = document.createElement("button");
-      row.className = "next-row";
-      row.title = "Move everyone on " + chLabel(fromIdx) + " to " + chLabel(c.idx);
+      row.className = "next-row" + (c.soon ? " soon" : "");
+      row.title = c.soon
+        ? chLabel(c.idx) + " is full but " + c.mins + "m in — click to go look at it"
+        : "Move everyone on " + chLabel(fromIdx) + " to " + chLabel(c.idx);
 
       const nm = document.createElement("span");
       nm.className = "n-ch";
@@ -1040,13 +1093,30 @@ function openNextMenu(anchor, fromIdx){
       pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
       row.appendChild(pct);
 
-      const slots = document.createElement("span");
-      slots.className = "n-slots";
-      slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
-      row.appendChild(slots);
+      if(c.soon){
+        const tag = document.createElement("span");
+        tag.className = "n-soon";
+        tag.textContent = "4/4 · " + c.mins + "m";
+        row.appendChild(tag);
+      } else {
+        const slots = document.createElement("span");
+        slots.className = "n-slots";
+        slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
+        row.appendChild(slots);
+      }
 
       row.onclick = () => {
         closeMenu();
+        if(c.soon){
+          // full board — nothing to merge into yet, so just take them there
+          const card = grid.children[c.idx];
+          if(card){
+            card.scrollIntoView({ block:"center", behavior:"smooth" });
+            card.classList.add("flash");
+            setTimeout(() => card.classList.remove("flash"), 1200);
+          }
+          return;
+        }
         send({ type:"moveGroup", from: fromIdx, to: c.idx });
       };
       body.appendChild(row);
