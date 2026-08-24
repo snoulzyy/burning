@@ -12,12 +12,15 @@ const LOG_MAX = 300;
 // Add a region here and it gets its own URL, its own board, its own chat.
 // Flip `enabled` to true when you're ready to open it up.
 const REGIONS = [
-  { id: "RD1",  enabled: true },
-  { id: "RD2",  enabled: true },
-  { id: "RD4",  enabled: true },
-  { id: "GOB1", enabled: true },
-  { id: "GOB5", enabled: true }
+  { id: "RD1",  area: "RD",  enabled: true },
+  { id: "RD2",  area: "RD",  enabled: true },
+  { id: "RD4",  area: "RD",  enabled: true },
+  { id: "GOB1", area: "GOB", enabled: true },
+  { id: "GOB5", area: "GOB", enabled: true }
 ];
+const AREAS = [...new Set(REGIONS.filter(r => r.enabled).map(r => r.area))];
+const areaOf = id => (byId(id) || {}).area;
+const regionsIn = area => live.filter(r => areaOf(r) === area);
 const live = REGIONS.filter(r => r.enabled).map(r => r.id);
 const byId = id => REGIONS.find(r => r.id === id);
 
@@ -35,7 +38,13 @@ function hydrate(saved) {
 
   // chat and the people list are shared across every region
   if (!Array.isArray(state.chat)) state.chat = [];
-  if (!Array.isArray(state.roster)) state.roster = [];
+  // one people list per area (RD boards share one, GOB boards share another)
+  if (!state.rosters || typeof state.rosters !== "object") state.rosters = {};
+  AREAS.forEach(a => { if (!Array.isArray(state.rosters[a])) state.rosters[a] = []; });
+  if (Array.isArray(state.roster) && state.roster.length) {   // carry over the old global list
+    state.rosters[AREAS[0]] = state.rosters[AREAS[0]].concat(state.roster);
+    delete state.roster;
+  }
   // pull any chat lines out of the old per-region logs, once
   live.forEach(r => {
     const keep = [];
@@ -100,15 +109,15 @@ function broadcastChat() {
   io.emit("chatlog", state.chat);
 }
 function broadcastRoster() {
-  io.emit("roster", state.roster);
+  io.emit("roster", state.rosters);
 }
-function findPerson(id) {
-  return state.roster.find(p => p.id === id);
+function findPerson(id, area) {
+  return (state.rosters[area] || []).find(p => p.id === id);
 }
-// pull someone off whatever channel they're on, anywhere
-function liftPerson(pid) {
+// pull someone off whatever channel they're on, within their own area
+function liftPerson(pid, area) {
   let from = null;
-  live.forEach(r => {
+  regionsIn(area).forEach(r => {
     state[r].channels.forEach((c, idx) => {
       const i = c.entries.findIndex(e => e.pid === pid);
       if (i !== -1) { c.entries.splice(i, 1); from = { region: r, idx }; }
@@ -136,7 +145,7 @@ io.on("connection", socket => {
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
     live.forEach(x => socket.emit("sync", snapshot(x)));
     socket.emit("chatlog", state.chat);
-    socket.emit("roster", state.roster);
+    socket.emit("roster", state.rosters);
     presence();
   });
 
@@ -257,47 +266,52 @@ io.on("connection", socket => {
         break;
       }
       case "person-add": {
+        const area = areaOf(region);
+        const list = state.rosters[area];
         const name = clean(a.name, 24);
-        if (!name) return;
+        if (!list || !name) return;
         if (name.toLowerCase() === "guest") return;   // guests stay guests
-        if (state.roster.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-        if (state.roster.length >= 200) return;
-        state.roster.push({ id: uid(), name });
-        state.roster.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        if (list.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
+        if (list.length >= 200) return;
+        list.push({ id: uid(), name });
+        list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
         return;
       }
       case "person-rename": {
-        const p = findPerson(a.id);
+        const area = areaOf(region);
+        const p = findPerson(a.id, area);
         const name = clean(a.name, 24);
         if (!p || !name || name === p.name) return;
         p.name = name;
-        live.forEach(r => state[r].channels.forEach(c =>
+        regionsIn(area).forEach(r => state[r].channels.forEach(c =>
           c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));
-        state.roster.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        state.rosters[area].sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        regionsIn(area).forEach(broadcast);
         return;
       }
       case "person-remove": {
-        const p = findPerson(a.id);
+        const area = areaOf(region);
+        const p = findPerson(a.id, area);
         if (!p) return;
-        liftPerson(p.id);
-        state.roster = state.roster.filter(x => x.id !== p.id);
+        liftPerson(p.id, area);
+        state.rosters[area] = state.rosters[area].filter(x => x.id !== p.id);
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        regionsIn(area).forEach(broadcast);
         return;
       }
       case "assign": {
-        const p = findPerson(a.pid);
+        const area = areaOf(region);
+        const p = findPerson(a.pid, area);
         if (!p || !target) return;
         const already = target.entries.find(e => e.pid === p.id);
         if (already) { already.at = Date.now(); note(region, `${p.name} timer reset in ${ch(at)} by ${by}`); break; }
         if (target.entries.length >= CAP) return;
-        const from = liftPerson(p.id);
+        const from = liftPerson(p.id, area);
         target.entries.push({ id: uid(), pid: p.id, name: p.name, at: Date.now() });
         if (from && from.region === region) {
           note(region, `${p.name} moved ${ch(from.idx)} → ${ch(at)} by ${by}`);
