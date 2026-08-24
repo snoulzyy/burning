@@ -69,9 +69,12 @@
 
   /* ---------------- bench ---------------- */
   .bench{
-    margin-bottom:16px;background:var(--panel);border:1px solid var(--line);
-    border-radius:12px;overflow:hidden;
+    position:sticky;top:8px;z-index:30;
+    margin-bottom:16px;background:rgba(10,17,25,.94);backdrop-filter:blur(6px);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 10px 26px rgba(0,0,0,.45);
   }
+  .bench.armed{border-color:rgba(34,211,238,.55);box-shadow:0 0 0 1px rgba(34,211,238,.25),0 10px 26px rgba(0,0,0,.5)}
   .bench-head{
     display:flex;align-items:center;gap:12px;padding:9px 13px;
     border-bottom:1px solid var(--line-soft);
@@ -111,6 +114,51 @@
   .chip.mine .claim{color:var(--cyan)}
   .chip .drop-btn:hover{color:var(--red);border-color:rgba(239,68,68,.45)}
   @media(max-width:700px){.bench-hint{display:none}}
+
+  /* ---------------- next up (floats over the board) ---------------- */
+  .next{
+    position:fixed;right:14px;top:120px;width:198px;z-index:45;
+    background:rgba(10,17,25,.95);backdrop-filter:blur(8px);
+    border:1px solid rgba(34,211,238,.35);border-radius:12px;overflow:hidden;
+    box-shadow:0 16px 40px rgba(0,0,0,.6);
+  }
+  .next[hidden]{display:none}
+  .next-head{
+    display:flex;align-items:center;padding:9px 11px;border-bottom:1px solid var(--line-soft);
+    font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan);
+  }
+  .next-close{
+    margin-left:auto;font:inherit;font-size:12px;line-height:1;color:var(--dim);
+    background:none;border:0;cursor:pointer;padding:0 1px;
+  }
+  .next-close:hover{color:var(--text)}
+  .next-body{display:flex;flex-direction:column;padding:6px;max-height:52vh;overflow-y:auto}
+  .next-body::-webkit-scrollbar{width:7px}
+  .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
+  .next-row{
+    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;
+    background:none;border:1px solid transparent;cursor:pointer;font:inherit;text-align:left;
+  }
+  .next-row:hover{background:rgba(34,211,238,.09);border-color:rgba(34,211,238,.3)}
+  .next-row .n-ch{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text)}
+  .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
+  .next-row .n-slots{margin-left:auto;font-size:10px;color:var(--dim)}
+  .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
+  .next-tab{
+    position:fixed;right:14px;top:120px;z-index:44;
+    font:inherit;font-size:10.5px;font-weight:800;letter-spacing:.14em;
+    color:var(--cyan);background:rgba(10,17,25,.95);backdrop-filter:blur(8px);
+    border:1px solid rgba(34,211,238,.35);border-radius:9px;padding:8px 11px;cursor:pointer;
+    box-shadow:0 10px 26px rgba(0,0,0,.5);
+  }
+  .next-tab:hover{background:rgba(34,211,238,.12)}
+  .next-tab[hidden]{display:none}
+  .ch.flash{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(34,211,238,.5)}
+  @media(max-width:820px){
+    .next{right:10px;left:10px;width:auto;top:auto;bottom:14px}
+    .next-body{max-height:38vh}
+    .next-tab{right:10px;bottom:14px;top:auto}
+  }
 
 /* ---------------- board ---------------- */
   .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
@@ -394,6 +442,12 @@
   </section>
 
   <div class="grid" id="grid"></div>
+
+  <button class="next-tab" id="nextTab" title="Recommended channels" hidden>NEXT UP</button>
+  <aside class="next" id="next">
+    <div class="next-head">NEXT UP<button class="next-close" id="nextClose" aria-label="Close">✕</button></div>
+    <div class="next-body" id="nextBody"></div>
+  </aside>
 
   <section class="chat">
     <div class="panes">
@@ -946,6 +1000,96 @@ socket.on("sync", s => {
 
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
+/* ---------------- next up panel open/close ---------------- */
+let nextOpen = true;
+try { nextOpen = localStorage.getItem("ct:next") !== "off" } catch(e){}
+if(window.innerWidth < 1180 && localStorage.getItem("ct:next") === null) nextOpen = false;
+
+function paintNextPanel(){
+  const panel = document.getElementById("next");
+  const tab = document.getElementById("nextTab");
+  if(!panel || !tab) return;
+  panel.hidden = !nextOpen;
+  tab.hidden = nextOpen;
+}
+function setNextOpen(v){
+  nextOpen = v;
+  try { localStorage.setItem("ct:next", v ? "on" : "off") } catch(e){}
+  paintNextPanel();
+  if(v) renderNext();
+}
+document.getElementById("nextTab").onclick = () => setNextOpen(true);
+document.getElementById("nextClose").onclick = () => setNextOpen(false);
+paintNextPanel();
+
+/* ---------------- next up ----------------
+   Channels worth moving to: must have room, ranked by burning % first,
+   emptier ones ahead of busier ones at the same percentage.
+   -------------------------------------------------------------------------- */
+const NEXT_COUNT = 8;
+
+function rankChannels(){
+  return board
+    .map((c, idx) => ({ idx, pct: c.pct, taken: c.entries.length }))
+    .filter(c => c.taken < CAP)
+    .sort((a, b) => (b.pct - a.pct) || (a.taken - b.taken) || (a.idx - b.idx))
+    .slice(0, NEXT_COUNT);
+}
+
+function renderNext(){
+  const body = document.getElementById("nextBody");
+  if(!body || !nextOpen) return;
+  const picks = rankChannels();
+  body.innerHTML = "";
+
+  if(!picks.length){
+    const e = document.createElement("div");
+    e.className = "next-empty";
+    e.textContent = "Every channel is full.";
+    body.appendChild(e);
+    return;
+  }
+
+  picks.forEach(c => {
+    const row = document.createElement("button");
+    row.className = "next-row";
+    row.title = pickedPerson ? "Put them on " + chLabel(c.idx) : "Jump to " + chLabel(c.idx);
+
+    const nm = document.createElement("span");
+    nm.className = "n-ch";
+    nm.textContent = chLabel(c.idx);
+    row.appendChild(nm);
+
+    const pct = document.createElement("span");
+    pct.className = "n-pct";
+    const col = pctColor(c.pct);
+    pct.textContent = c.pct + "%";
+    pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
+    row.appendChild(pct);
+
+    const slots = document.createElement("span");
+    slots.className = "n-slots";
+    slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
+    row.appendChild(slots);
+
+    row.onclick = () => {
+      if(pickedPerson){
+        send({ type:"assign", ch:c.idx, pid:pickedPerson });
+        pickedPerson = null;
+        renderBench();
+        return;
+      }
+      const card = grid.children[c.idx];
+      if(card){
+        card.scrollIntoView({ block:"center", behavior:"smooth" });
+        card.classList.add("flash");
+        setTimeout(() => card.classList.remove("flash"), 1200);
+      }
+    };
+    body.appendChild(row);
+  });
+}
+
 /* ---------------- the bench ---------------- */
 const benchEl = document.getElementById("bench");
 
@@ -1047,6 +1191,7 @@ function renderBench(){
     benchEl.appendChild(chip);
   });
 
+  document.querySelector(".bench").classList.toggle("armed", !!pickedPerson);
   document.getElementById("benchHint").textContent = pickedPerson
     ? "now click the channel to put them on"
     : "click a name, then click a channel";
@@ -1078,6 +1223,7 @@ function render(){
   renderLog();
   renderHint();
   renderBench();
+  renderNext();
 }
 
 function renderHint(){
