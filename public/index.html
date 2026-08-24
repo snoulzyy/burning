@@ -105,118 +105,6 @@
   .chip .drop-btn:hover{color:var(--red);border-color:rgba(239,68,68,.45)}
   @media(max-width:700px){.bench-hint{display:none}}
 
-  /* ---------------- the bench ---------------- */
-const benchEl = document.getElementById("bench");
-
-// where is this person right now, across every region?
-function placementOf(pid){
-  for(const r of Object.keys(boards)){
-    const chans = boards[r] || [];
-    for(let i = 0; i < chans.length; i++){
-      if(chans[i].entries.some(e => e.pid === pid)) return { region: r, idx: i };
-    }
-  }
-  return null;
-}
-
-function personSVG(){
-  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
-    + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    + '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6.2 7-6.2s7 2.6 7 6.2"/></svg>';
-}
-
-function renderBench(){
-  if(!benchEl) return;
-  benchEl.innerHTML = "";
-  if(!roster.length){
-    const e = document.createElement("div");
-    e.className = "bench-empty";
-    e.textContent = "No one here yet — hit “add person” to put names in.";
-    benchEl.appendChild(e);
-    return;
-  }
-
-  roster.forEach(p => {
-    const at = placementOf(p.id);
-    const chip = document.createElement("div");
-    chip.className = "chip"
-      + (at ? " placed" : "")
-      + (myIds.has(p.id) ? " mine" : "")
-      + (pickedPerson === p.id ? " picked" : "");
-
-    const nm = document.createElement("span");
-    nm.className = "nm";
-    nm.textContent = p.name;
-    chip.appendChild(nm);
-
-    if(at){
-      const w = document.createElement("span");
-      w.className = "where";
-      w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
-      chip.appendChild(w);
-    } else {
-      chip.draggable = true;
-      chip.ondragstart = ev => {
-        ev.dataTransfer.effectAllowed = "move";
-        ev.dataTransfer.setData("text/plain", JSON.stringify({ kind:"person", pid:p.id }));
-      };
-      chip.onclick = ev => {
-        if(ev.target.closest("button")) return;
-        pickedPerson = (pickedPerson === p.id) ? null : p.id;
-        picked = null;
-        renderBench(); render();
-      };
-    }
-
-    // "this is me" — ties alerts for whatever channel they're on to this browser
-    const claim = document.createElement("button");
-    claim.className = "chip-btn claim";
-    claim.innerHTML = personSVG();
-    claim.title = myIds.has(p.id) ? "This is you — click to unset" : "Mark as you (for alerts)";
-    claim.onclick = ev => {
-      ev.stopPropagation();
-      if(myIds.has(p.id)) myIds.delete(p.id); else {
-        myIds.add(p.id);
-        try { if(window.Notification && Notification.permission === "default") Notification.requestPermission() } catch(e){}
-      }
-      saveMine(); renderBench();
-    };
-    chip.appendChild(claim);
-
-    if(!at){
-      const del = document.createElement("button");
-      del.className = "chip-btn drop-btn";
-      del.innerHTML = crossSVG();
-      del.title = "Remove " + p.name + " from the list";
-      del.onclick = ev => {
-        ev.stopPropagation();
-        if(confirm("Remove " + p.name + " from the people list?")){
-          myIds.delete(p.id); saveMine();
-          send({ type:"person-remove", id:p.id });
-        }
-      };
-      chip.appendChild(del);
-    }
-
-    benchEl.appendChild(chip);
-  });
-
-  document.getElementById("benchHint").textContent = pickedPerson
-    ? "now click the channel to put them on"
-    : "click a name, then click a channel";
-}
-
-document.getElementById("benchAdd").onclick = () => {
-  const v = prompt("Name to add");
-  const name = (v || "").trim().slice(0,24);
-  if(!name) return;
-  if(name.toLowerCase() === "guest"){
-    toast("“Guest” can't go in the people box — it's fine to just stay a guest", true);
-    return;
-  }
-  send({ type:"person-add", name });
-};
-
 /* ---------------- board ---------------- */
   .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
   @media(max-width:1180px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -955,7 +843,8 @@ function beep(startAt){
 function alarm(){
   if(!soundOn) return;
   primeAudio();
-  if(!audioCtx) return;
+  // a suspended context queues notes and dumps them all on the next click — skip instead
+  if(!audioCtx || audioCtx.state !== "running") return;
   const now = audioCtx.currentTime;
   // three bursts, so it's hard to miss from across the room
   [0, 1.1, 2.2].forEach(off => beep(now + off));
@@ -1115,6 +1004,118 @@ function checkWatched(r, next){
   if(r === region) render();
 }
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
+
+/* ---------------- the bench ---------------- */
+const benchEl = document.getElementById("bench");
+
+// where is this person right now, across every region?
+function placementOf(pid){
+  for(const r of Object.keys(boards)){
+    const chans = boards[r] || [];
+    for(let i = 0; i < chans.length; i++){
+      if(chans[i].entries.some(e => e.pid === pid)) return { region: r, idx: i };
+    }
+  }
+  return null;
+}
+
+function personSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6.2 7-6.2s7 2.6 7 6.2"/></svg>';
+}
+
+function renderBench(){
+  if(!benchEl) return;
+  benchEl.innerHTML = "";
+  if(!roster.length){
+    const e = document.createElement("div");
+    e.className = "bench-empty";
+    e.textContent = "No one here yet — hit “add person” to put names in.";
+    benchEl.appendChild(e);
+    return;
+  }
+
+  roster.forEach(p => {
+    const at = placementOf(p.id);
+    const chip = document.createElement("div");
+    chip.className = "chip"
+      + (at ? " placed" : "")
+      + (myIds.has(p.id) ? " mine" : "")
+      + (pickedPerson === p.id ? " picked" : "");
+
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = p.name;
+    chip.appendChild(nm);
+
+    if(at){
+      const w = document.createElement("span");
+      w.className = "where";
+      w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
+      chip.appendChild(w);
+    } else {
+      chip.draggable = true;
+      chip.ondragstart = ev => {
+        ev.dataTransfer.effectAllowed = "move";
+        ev.dataTransfer.setData("text/plain", JSON.stringify({ kind:"person", pid:p.id }));
+      };
+      chip.onclick = ev => {
+        if(ev.target.closest("button")) return;
+        pickedPerson = (pickedPerson === p.id) ? null : p.id;
+        picked = null;
+        renderBench(); render();
+      };
+    }
+
+    // "this is me" — ties alerts for whatever channel they're on to this browser
+    const claim = document.createElement("button");
+    claim.className = "chip-btn claim";
+    claim.innerHTML = personSVG();
+    claim.title = myIds.has(p.id) ? "This is you — click to unset" : "Mark as you (for alerts)";
+    claim.onclick = ev => {
+      ev.stopPropagation();
+      if(myIds.has(p.id)) myIds.delete(p.id); else {
+        myIds.add(p.id);
+        try { if(window.Notification && Notification.permission === "default") Notification.requestPermission() } catch(e){}
+      }
+      saveMine(); renderBench();
+    };
+    chip.appendChild(claim);
+
+    if(!at){
+      const del = document.createElement("button");
+      del.className = "chip-btn drop-btn";
+      del.innerHTML = crossSVG();
+      del.title = "Remove " + p.name + " from the list";
+      del.onclick = ev => {
+        ev.stopPropagation();
+        if(confirm("Remove " + p.name + " from the people list?")){
+          myIds.delete(p.id); saveMine();
+          send({ type:"person-remove", id:p.id });
+        }
+      };
+      chip.appendChild(del);
+    }
+
+    benchEl.appendChild(chip);
+  });
+
+  document.getElementById("benchHint").textContent = pickedPerson
+    ? "now click the channel to put them on"
+    : "click a name, then click a channel";
+}
+
+document.getElementById("benchAdd").onclick = () => {
+  const v = prompt("Name to add");
+  const name = (v || "").trim().slice(0,24);
+  if(!name) return;
+  if(name.toLowerCase() === "guest"){
+    toast("“Guest” can't go in the people box — it's fine to just stay a guest", true);
+    return;
+  }
+  send({ type:"person-add", name });
+};
 
 /* ---------------- board ---------------- */
 const grid = document.getElementById("grid");
@@ -1501,7 +1502,11 @@ soundBtn.onclick = () => {
   soundOn = !soundOn;
   try { localStorage.setItem("ct:sound", soundOn ? "on" : "off") } catch(e){}
   paintSound();
-  if(soundOn){ primeAudio(); if(audioCtx) beep(audioCtx.currentTime); }
+  if(soundOn){
+    primeAudio();
+    // resume() is async, so give it a moment before the test note
+    setTimeout(() => { if(audioCtx && audioCtx.state === "running") beep(audioCtx.currentTime) }, 120);
+  }
 };
 
 /* ---------------- 40 minute channel alert ----------------
@@ -1511,6 +1516,7 @@ soundBtn.onclick = () => {
 const CHANNEL_ALERT_MINUTES = 40;
 const ALERT_REGIONS = ["RD1", "RD2", "RD4"];   // GOB boards never chime
 const alertedChannels = new Set();      // "REGION:index" while a channel is over
+let timersPrimed = false;               // first pass just takes stock, silently
 
 function onThisChannel(c){
   // claimed people first — survives nicknames, since it tracks the person not the text
@@ -1524,6 +1530,7 @@ function onThisChannel(c){
 function checkChannelTimers(){
   const limit = CHANNEL_ALERT_MINUTES * 60000;
   const now = Date.now();
+  const priming = !timersPrimed;
   Object.keys(boards).forEach(r => {
     if(!ALERT_REGIONS.includes(r)) return;
     (boards[r] || []).forEach((c, idx) => {
@@ -1533,6 +1540,7 @@ function checkChannelTimers(){
       if(!over){ alertedChannels.delete(key); return; }   // timers reset -> armed again
       if(alertedChannels.has(key)) return;
       alertedChannels.add(key);
+      if(!timersPrimed) return;                           // already over when you opened the page
       if(!onThisChannel(c)) return;                       // not your channel, stay quiet
 
       const who = c.entries
@@ -1553,6 +1561,7 @@ function checkChannelTimers(){
       toast(msg);
     });
   });
+  if(priming) timersPrimed = true;
 }
 
 /* ---------------- clocks ---------------- */
