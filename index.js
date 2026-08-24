@@ -13,6 +13,8 @@ const LOG_MAX = 300;
 // Flip `enabled` to true when you're ready to open it up.
 const REGIONS = [
   { id: "RD1",  enabled: true },
+  { id: "RD2",  enabled: true },
+  { id: "RD4",  enabled: true },
   { id: "GOB1", enabled: true },
   { id: "GOB5", enabled: true }
 ];
@@ -31,8 +33,9 @@ function hydrate(saved) {
   if (saved && typeof saved === "object") state = saved;
   live.forEach(r => { if (!state[r]) state[r] = blankRegion(); });
 
-  // chat is shared across every region; activity stays per region
+  // chat and the people list are shared across every region
   if (!Array.isArray(state.chat)) state.chat = [];
+  if (!Array.isArray(state.roster)) state.roster = [];
   // pull any chat lines out of the old per-region logs, once
   live.forEach(r => {
     const keep = [];
@@ -96,6 +99,23 @@ function broadcast(region) {
 function broadcastChat() {
   io.emit("chatlog", state.chat);
 }
+function broadcastRoster() {
+  io.emit("roster", state.roster);
+}
+function findPerson(id) {
+  return state.roster.find(p => p.id === id);
+}
+// pull someone off whatever channel they're on, anywhere
+function liftPerson(pid) {
+  let from = null;
+  live.forEach(r => {
+    state[r].channels.forEach((c, idx) => {
+      const i = c.entries.findIndex(e => e.pid === pid);
+      if (i !== -1) { c.entries.splice(i, 1); from = { region: r, idx }; }
+    });
+  });
+  return from;
+}
 function presence() {
   io.emit("presence", { n: online });
 }
@@ -116,6 +136,7 @@ io.on("connection", socket => {
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
     live.forEach(x => socket.emit("sync", snapshot(x)));
     socket.emit("chatlog", state.chat);
+    socket.emit("roster", state.roster);
     presence();
   });
 
@@ -233,6 +254,60 @@ io.on("connection", socket => {
         const left = from.entries.length;
         note(region, `${moving.map(e => e.name).join(", ")} moved ${A} → ${B} by ${by}`
           + (left ? ` — ${left} stayed on ${A}, ${B} is full` : ""));
+        break;
+      }
+      case "person-add": {
+        const name = clean(a.name, 24);
+        if (!name) return;
+        if (name.toLowerCase() === "guest") return;   // guests stay guests
+        if (state.roster.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
+        if (state.roster.length >= 200) return;
+        state.roster.push({ id: uid(), name });
+        state.roster.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        persist();
+        broadcastRoster();
+        return;
+      }
+      case "person-rename": {
+        const p = findPerson(a.id);
+        const name = clean(a.name, 24);
+        if (!p || !name || name === p.name) return;
+        p.name = name;
+        live.forEach(r => state[r].channels.forEach(c =>
+          c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));
+        state.roster.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        persist();
+        broadcastRoster();
+        live.forEach(broadcast);
+        return;
+      }
+      case "person-remove": {
+        const p = findPerson(a.id);
+        if (!p) return;
+        liftPerson(p.id);
+        state.roster = state.roster.filter(x => x.id !== p.id);
+        persist();
+        broadcastRoster();
+        live.forEach(broadcast);
+        return;
+      }
+      case "assign": {
+        const p = findPerson(a.pid);
+        if (!p || !target) return;
+        const already = target.entries.find(e => e.pid === p.id);
+        if (already) { already.at = Date.now(); note(region, `${p.name} timer reset in ${ch(at)} by ${by}`); break; }
+        if (target.entries.length >= CAP) return;
+        const from = liftPerson(p.id);
+        target.entries.push({ id: uid(), pid: p.id, name: p.name, at: Date.now() });
+        if (from && from.region === region) {
+          note(region, `${p.name} moved ${ch(from.idx)} → ${ch(at)} by ${by}`);
+        } else if (from) {
+          note(from.region, `${p.name} left ${ch(from.idx)} by ${by}`);
+          note(region, `${p.name} added to ${ch(at)} by ${by} — was on ${from.region}`);
+          broadcast(from.region);
+        } else {
+          note(region, `${p.name} added to ${ch(at)} by ${by}`);
+        }
         break;
       }
       case "clear": {

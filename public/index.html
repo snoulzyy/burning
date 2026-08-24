@@ -67,7 +67,157 @@
   .tab.soon{color:#33465a;cursor:not-allowed;background:none}
   .tab.soon:hover{background:none;color:#33465a}
 
-  /* ---------------- board ---------------- */
+  /* ---------------- bench ---------------- */
+  .bench{
+    margin-bottom:16px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;
+  }
+  .bench-head{
+    display:flex;align-items:center;gap:12px;padding:9px 13px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .bench-title{font-size:11.5px;font-weight:800;letter-spacing:.16em;color:var(--cyan)}
+  .bench-hint{font-size:10.5px;color:var(--dim)}
+  .bench-add{margin-left:auto;font-size:11px;padding:5px 11px}
+  .bench-body{display:flex;flex-wrap:wrap;gap:7px;padding:11px 13px}
+  .bench-empty{font-size:11.5px;color:var(--dim);padding:2px 0}
+
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:5px 6px 5px 10px;
+    border-radius:8px;border:1px solid var(--line);background:var(--raise);
+    font-size:12.5px;cursor:grab;transition:.15s;
+  }
+  .chip:hover{border-color:#2d3f52}
+  .chip:active{cursor:grabbing}
+  .chip .nm{font-family:var(--name-face);font-weight:600}
+  .chip.placed{opacity:.45;cursor:default}
+  .chip.placed .where{font-size:10px;color:var(--amber);letter-spacing:.04em}
+  .chip.mine{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
+  .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
+  .chip-btn{
+    width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
+    border-radius:5px;border:1px solid transparent;background:none;
+    color:var(--dim);cursor:pointer;line-height:0;
+  }
+  .chip-btn svg{width:11px;height:11px;display:block}
+  .chip-btn:hover{color:var(--text);border-color:var(--line)}
+  .chip.mine .claim{color:var(--cyan)}
+  .chip .drop-btn:hover{color:var(--red);border-color:rgba(239,68,68,.45)}
+  @media(max-width:700px){.bench-hint{display:none}}
+
+  /* ---------------- the bench ---------------- */
+const benchEl = document.getElementById("bench");
+
+// where is this person right now, across every region?
+function placementOf(pid){
+  for(const r of Object.keys(boards)){
+    const chans = boards[r] || [];
+    for(let i = 0; i < chans.length; i++){
+      if(chans[i].entries.some(e => e.pid === pid)) return { region: r, idx: i };
+    }
+  }
+  return null;
+}
+
+function personSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6.2 7-6.2s7 2.6 7 6.2"/></svg>';
+}
+
+function renderBench(){
+  if(!benchEl) return;
+  benchEl.innerHTML = "";
+  if(!roster.length){
+    const e = document.createElement("div");
+    e.className = "bench-empty";
+    e.textContent = "No one here yet — hit “add person” to put names in.";
+    benchEl.appendChild(e);
+    return;
+  }
+
+  roster.forEach(p => {
+    const at = placementOf(p.id);
+    const chip = document.createElement("div");
+    chip.className = "chip"
+      + (at ? " placed" : "")
+      + (myIds.has(p.id) ? " mine" : "")
+      + (pickedPerson === p.id ? " picked" : "");
+
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = p.name;
+    chip.appendChild(nm);
+
+    if(at){
+      const w = document.createElement("span");
+      w.className = "where";
+      w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
+      chip.appendChild(w);
+    } else {
+      chip.draggable = true;
+      chip.ondragstart = ev => {
+        ev.dataTransfer.effectAllowed = "move";
+        ev.dataTransfer.setData("text/plain", JSON.stringify({ kind:"person", pid:p.id }));
+      };
+      chip.onclick = ev => {
+        if(ev.target.closest("button")) return;
+        pickedPerson = (pickedPerson === p.id) ? null : p.id;
+        picked = null;
+        renderBench(); render();
+      };
+    }
+
+    // "this is me" — ties alerts for whatever channel they're on to this browser
+    const claim = document.createElement("button");
+    claim.className = "chip-btn claim";
+    claim.innerHTML = personSVG();
+    claim.title = myIds.has(p.id) ? "This is you — click to unset" : "Mark as you (for alerts)";
+    claim.onclick = ev => {
+      ev.stopPropagation();
+      if(myIds.has(p.id)) myIds.delete(p.id); else {
+        myIds.add(p.id);
+        try { if(window.Notification && Notification.permission === "default") Notification.requestPermission() } catch(e){}
+      }
+      saveMine(); renderBench();
+    };
+    chip.appendChild(claim);
+
+    if(!at){
+      const del = document.createElement("button");
+      del.className = "chip-btn drop-btn";
+      del.innerHTML = crossSVG();
+      del.title = "Remove " + p.name + " from the list";
+      del.onclick = ev => {
+        ev.stopPropagation();
+        if(confirm("Remove " + p.name + " from the people list?")){
+          myIds.delete(p.id); saveMine();
+          send({ type:"person-remove", id:p.id });
+        }
+      };
+      chip.appendChild(del);
+    }
+
+    benchEl.appendChild(chip);
+  });
+
+  document.getElementById("benchHint").textContent = pickedPerson
+    ? "now click the channel to put them on"
+    : "click a name, then click a channel";
+}
+
+document.getElementById("benchAdd").onclick = () => {
+  const v = prompt("Name to add");
+  const name = (v || "").trim().slice(0,24);
+  if(!name) return;
+  if(name.toLowerCase() === "guest"){
+    toast("“Guest” can't go in the people box — it's fine to just stay a guest", true);
+    return;
+  }
+  send({ type:"person-add", name });
+};
+
+/* ---------------- board ---------------- */
   .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
   @media(max-width:1180px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
   @media(max-width:940px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -350,6 +500,15 @@
     <nav class="tabs" id="tabs"></nav>
   </header>
 
+  <section class="bench">
+    <div class="bench-head">
+      <span class="bench-title">PEOPLE</span>
+      <span class="bench-hint" id="benchHint">click a name, then click a channel</span>
+      <button class="ghost bench-add" id="benchAdd">+ add person</button>
+    </div>
+    <div class="bench-body" id="bench"></div>
+  </section>
+
   <div class="grid" id="grid"></div>
 
   <section class="chat">
@@ -391,6 +550,13 @@ let regionList = [];
 let boards = {};        // region -> channels
 let logs = {};          // region -> activity log
 let chat = [];          // one chat, shared by every region
+let roster = [];        // the people list, shared by every region
+let pickedPerson = null;
+let myIds = new Set();  // which of those people are "me" on this browser
+try { myIds = new Set(JSON.parse(localStorage.getItem("ct:mine") || "[]")) } catch(e){}
+function saveMine(){
+  try { localStorage.setItem("ct:mine", JSON.stringify([...myIds])) } catch(e){}
+}
 let board = [];
 let log = [];
 let editing = null;      // {ch, id} | {ch, id:"new"}
@@ -709,6 +875,23 @@ const HELP_HTML = `
   <p><span class="k">✎</span> rename &nbsp;·&nbsp; <span class="k">✕</span> remove
      &nbsp;·&nbsp; click the timer to reset it.</p>
 
+  <h5>THE PEOPLE BOX</h5>
+  <p>Add everyone once at the top. Click a name then click a channel to put them on —
+     no typing. Take them off a channel and they drop back into the box by themselves.</p>
+  <p>Optional. Never add yourself if you'd rather not — typing names straight onto a
+     channel works exactly as before, and guests are never listed up there.</p>
+  <p>Hit the little person icon on your own name to mark it as you. Do that and the
+     40 minute alert follows <em>you</em>, even if someone spells your name differently
+     or renames you later.</p>
+
+  <h5>40 MINUTE ALERT</h5>
+  <p>On RD1, RD2 and RD4 only: when someone on a channel hits 40 minutes, everyone
+     <em>on that channel</em> gets a sound and a popup. Nobody else is bothered by it.
+     The GOB boards don't do this at all.</p>
+  <p>RD boards only — GOB1 and GOB5 never chime.</p>
+  <p>Best way to be included: mark yourself in the people box above. Failing that it
+     matches the display name you set at the bottom of the chat.</p>
+
   <h5>WAITING ON A FULL CHANNEL</h5>
   <p>Click the <span class="k">☆</span> on a 4/4 channel. When a slot opens you get a
      sound, a flashing tab, and a popup — so you don't have to watch the screen.</p>
@@ -875,6 +1058,11 @@ window.addEventListener("popstate", () => {
   if(id && id !== region && regionList.some(r => r.enabled && r.id === id)) switchTo(id, true);
 });
 
+socket.on("roster", arr => {
+  roster = Array.isArray(arr) ? arr : [];
+  renderBench();
+});
+
 socket.on("chatlog", arr => {
   chat = Array.isArray(arr) ? arr : [];
   renderLog();
@@ -942,6 +1130,7 @@ function render(){
     `${occ}/${board.length} channels occupied · ${ppl} tracked · ${full} full`;
   renderLog();
   renderHint();
+  renderBench();
 }
 
 function renderHint(){
@@ -1077,9 +1266,15 @@ function card(c,i){
     setTimeout(()=>inp.focus(),0);
   }
 
-  if(picked && picked.ch !== i) el.classList.add("target");
+  if(pickedPerson || (picked && picked.ch !== i)) el.classList.add("target");
   el.onclick = e => {
     if(e.target.closest("button") || e.target.closest("input")) return;
+    if(pickedPerson){
+      send({ type:"assign", ch:i, pid:pickedPerson });
+      pickedPerson = null;
+      renderBench();
+      return;
+    }
     if(!picked || picked.ch === i) return;
     if(picked.group) send({type:"moveGroup", from:picked.ch, to:i});
     else send({type:"moveUser", from:picked.ch, to:i, id:picked.id});
@@ -1091,7 +1286,9 @@ function card(c,i){
   el.ondrop = e => {
     e.preventDefault(); el.classList.remove("drop");
     let d; try{ d = JSON.parse(e.dataTransfer.getData("text/plain")) }catch(err){ return }
-    if(!d || d.from === i) return;
+    if(!d) return;
+    if(d.kind === "person"){ send({ type:"assign", ch:i, pid:d.pid }); return; }
+    if(d.from === i) return;
     if(d.kind === "group") send({type:"moveGroup",from:d.from,to:i});
     else send({type:"moveUser",from:d.from,to:i,id:d.id});
   };
@@ -1195,6 +1392,7 @@ document.addEventListener("click", closeMenu);
 document.addEventListener("keydown", e => {
   if(e.key !== "Escape") return;
   closeMenu();
+  if(pickedPerson){ pickedPerson = null; renderBench(); render(); }
   if(picked){ picked = null; render() }
 });
 window.addEventListener("resize", closeMenu);
@@ -1290,6 +1488,9 @@ whoBtn.onclick = () => {
     me = v.trim().slice(0,24);
     whoBtn.textContent = me;
     try { localStorage.setItem("ct:name", me) } catch(e){}
+    try {
+      if(window.Notification && Notification.permission === "default") Notification.requestPermission();
+    } catch(e){}
   }
 };
 
@@ -1303,10 +1504,62 @@ soundBtn.onclick = () => {
   if(soundOn){ primeAudio(); if(audioCtx) beep(audioCtx.currentTime); }
 };
 
+/* ---------------- 40 minute channel alert ----------------
+   When someone on a channel hits the mark, only the people actually on that
+   channel get the sound — everyone else hears nothing.
+   -------------------------------------------------------------------------- */
+const CHANNEL_ALERT_MINUTES = 40;
+const ALERT_REGIONS = ["RD1", "RD2", "RD4"];   // GOB boards never chime
+const alertedChannels = new Set();      // "REGION:index" while a channel is over
+
+function onThisChannel(c){
+  // claimed people first — survives nicknames, since it tracks the person not the text
+  if(c.entries.some(e => e.pid && myIds.has(e.pid))) return true;
+  // fall back to the display name for anyone typed in by hand
+  const mine = me.trim().toLowerCase();
+  if(!mine || mine === "guest") return false;
+  return c.entries.some(e => e.name.trim().toLowerCase() === mine);
+}
+
+function checkChannelTimers(){
+  const limit = CHANNEL_ALERT_MINUTES * 60000;
+  const now = Date.now();
+  Object.keys(boards).forEach(r => {
+    if(!ALERT_REGIONS.includes(r)) return;
+    (boards[r] || []).forEach((c, idx) => {
+      const key = r + ":" + idx;
+      const over = c.entries.some(e => now - e.at >= limit);
+
+      if(!over){ alertedChannels.delete(key); return; }   // timers reset -> armed again
+      if(alertedChannels.has(key)) return;
+      alertedChannels.add(key);
+      if(!onThisChannel(c)) return;                       // not your channel, stay quiet
+
+      const who = c.entries
+        .filter(e => now - e.at >= limit)
+        .map(e => e.name)
+        .join(", ");
+      const msg = r + " " + chLabel(idx) + " — " + CHANNEL_ALERT_MINUTES + "m up (" + who + ")";
+      alarm();
+      flashTitle(r + " " + chLabel(idx) + " " + CHANNEL_ALERT_MINUTES + "m");
+      try {
+        if(window.Notification && Notification.permission === "granted"){
+          const n = new Notification(r + " — " + CHANNEL_ALERT_MINUTES + " minutes", {
+            body: msg, requireInteraction: true
+          });
+          n.onclick = () => { window.focus(); stopFlash(); n.close(); };
+        }
+      } catch(e){}
+      toast(msg);
+    });
+  });
+}
+
 /* ---------------- clocks ---------------- */
 setInterval(() => {
   document.getElementById("refreshed").textContent =
     new Date().toISOString().slice(11,19) + " UTC";
+  checkChannelTimers();
   document.querySelectorAll(".ago").forEach(a => { a.textContent = ago(+a.dataset.at) });
   document.querySelectorAll(".clock").forEach(c => {
     const at = +c.dataset.at;
