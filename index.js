@@ -85,7 +85,7 @@ function offline(id) {
 }
 
 /* ---------------- realtime ---------------- */
-const counts = {};
+let online = 0;   // everyone connected, whichever region they're looking at
 
 function snapshot(region) {
   return { region, channels: state[region].channels, log: state[region].log };
@@ -96,8 +96,8 @@ function broadcast(region) {
 function broadcastChat() {
   io.emit("chatlog", state.chat);
 }
-function presence(region) {
-  io.to(region).emit("presence", { region, n: counts[region] || 0 });
+function presence() {
+  io.emit("presence", { n: online });
 }
 
 io.on("connection", socket => {
@@ -110,13 +110,13 @@ io.on("connection", socket => {
 
     // subscribe to all of them, so switching tabs needs no round trip
     live.forEach(x => socket.join(x));
+    if (!viewing) online++;          // count the person once, not once per tab switch
     viewing = id;
-    counts[id] = (counts[id] || 0) + 1;
 
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
     live.forEach(x => socket.emit("sync", snapshot(x)));
     socket.emit("chatlog", state.chat);
-    presence(id);
+    presence();
   });
 
   // just changing tabs — no reload, only the watcher count moves
@@ -124,10 +124,7 @@ io.on("connection", socket => {
     const id = clean(raw, 12).toUpperCase();
     const r = byId(id);
     if (!r || !r.enabled || id === viewing) return;
-    if (viewing) { counts[viewing] = Math.max(0, (counts[viewing] || 1) - 1); presence(viewing); }
-    viewing = id;
-    counts[id] = (counts[id] || 0) + 1;
-    presence(id);
+    viewing = id;                    // switching tabs doesn't change the head count
   });
 
   socket.on("action", a => {
@@ -263,8 +260,8 @@ io.on("connection", socket => {
 
   socket.on("disconnect", () => {
     if (!viewing) return;
-    counts[viewing] = Math.max(0, (counts[viewing] || 1) - 1);
-    presence(viewing);
+    online = Math.max(0, online - 1);
+    presence();
   });
 });
 

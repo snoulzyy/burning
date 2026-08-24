@@ -875,19 +875,18 @@ window.addEventListener("popstate", () => {
   if(id && id !== region && regionList.some(r => r.enabled && r.id === id)) switchTo(id, true);
 });
 
-const presenceCounts = {};
 socket.on("chatlog", arr => {
   chat = Array.isArray(arr) ? arr : [];
   renderLog();
 });
 
+let onlineCount = 0;   // everyone on the site, whichever region they're on
 socket.on("presence", p => {
-  const r = (p && p.region) || region;
-  presenceCounts[r] = (p && typeof p.n === "number") ? p.n : 0;
-  if(r === region) paintPresence();
+  onlineCount = (p && typeof p.n === "number") ? p.n : 0;
+  paintPresence();
 });
 function paintPresence(){
-  document.getElementById("online").textContent = (presenceCounts[region] || 0) + " watching";
+  document.getElementById("online").textContent = onlineCount + " watching";
 }
 
 socket.on("sync", s => {
