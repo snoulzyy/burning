@@ -357,26 +357,23 @@
   .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.03)}
   .row:hover{background:rgba(255,255,255,.055)}
   .row.tinted,.chip.tinted{
-    position:relative;overflow:hidden;border:1px solid transparent;
-    background-image:linear-gradient(100deg,var(--c3) 0%,var(--c) 32%,var(--c2) 50%,var(--c) 68%,var(--c3) 100%);
-    background-size:260% 100%;
-    animation:auraDrift 7s ease-in-out infinite, auraGlow 3.6s ease-in-out infinite;
-  }
-  @keyframes auraDrift{
-    0%  {background-position:0% 50%}
-    50% {background-position:100% 50%}
-    100%{background-position:0% 50%}
+    position:relative;overflow:hidden;
+    background:linear-gradient(180deg,var(--c),var(--c2));
+    border:1px solid var(--edge);
+    box-shadow:0 0 12px -3px var(--glow), inset 0 0 14px -8px var(--glow);
+    animation:auraGlow 3.8s ease-in-out infinite;
   }
   @keyframes auraGlow{
-    0%,100%{box-shadow:0 0 10px -2px var(--glow)}
-    50%    {box-shadow:0 0 20px 1px var(--glow)}
+    0%,100%{box-shadow:0 0 10px -4px var(--glow), inset 0 0 12px -9px var(--glow)}
+    50%    {box-shadow:0 0 22px 0 var(--glow), inset 0 0 18px -6px var(--glow)}
   }
-  /* a highlight that slides across every few seconds */
+  /* a faint band of their colour travelling along the pill */
   .row.tinted::after,.chip.tinted::after{
     content:"";position:absolute;inset:0;pointer-events:none;
-    background:linear-gradient(104deg,transparent 38%,rgba(255,255,255,.26) 50%,transparent 62%);
+    background:linear-gradient(104deg,transparent 40%,var(--glow) 50%,transparent 60%);
+    opacity:.22;
     transform:translate3d(-130%,0,0);
-    animation:auraSheen 5.5s ease-in-out infinite;
+    animation:auraSheen 6s ease-in-out infinite;
   }
   @keyframes auraSheen{
     0%  {transform:translate3d(-130%,0,0)}
@@ -384,11 +381,11 @@
     100%{transform:translate3d(130%,0,0)}
   }
   .row.tinted > *,.chip.tinted > *{position:relative;z-index:1}
-  .row.tinted:hover{filter:brightness(1.08)}
+  .row.tinted:hover,.chip.tinted:hover{filter:brightness(1.18)}
   .row.tinted .who{font-weight:700}
-  .row.tinted .icon:hover{background:rgba(255,255,255,.18)}
+  .row.tinted .icon:hover{background:rgba(255,255,255,.10)}
   @media(prefers-reduced-motion:reduce){
-    .row.tinted,.chip.tinted{animation:none;background-image:linear-gradient(100deg,var(--c),var(--c))}
+    .row.tinted,.chip.tinted{animation:none}
     .row.tinted::after,.chip.tinted::after{animation:none;opacity:0}
   }
   .row.dragging{opacity:.3}
@@ -668,6 +665,12 @@ function luminance(hex){
 }
 // black on light colours, near-white on dark ones — always legible
 const inkOn = hex => luminance(hex) > .42 ? "#0a1119" : "#f2f8fd";
+// the colour itself, lifted until it reads against a dark pill
+function glowInk(hex){
+  const l = luminance(hex);
+  if(l >= .34) return hex;
+  return mixHex(hex, Math.min(.62, (.34 - l) * 1.9));
+}
 // nudge a colour toward white (t>0) or black (t<0)
 function mixHex(hex, t){
   const c = hexRGB(hex);
@@ -1606,13 +1609,13 @@ function renderBench(){
     nm.className = "nm";
     nm.textContent = p.name;
     if(p.color){
+      const plit = glowInk(p.color);
       chip.classList.add("tinted");
-      chip.style.setProperty("--c",    rgba(p.color, .92));
-      chip.style.setProperty("--c2",   rgba(mixHex(p.color, .28), .95));
-      chip.style.setProperty("--c3",   rgba(mixHex(p.color, -.18), .92));
-      chip.style.setProperty("--glow", rgba(p.color, .45));
-      chip.style.borderColor = rgba(p.color, .95);
-      nm.style.color = inkOn(p.color);
+      chip.style.setProperty("--c",    rgba(p.color, .16));
+      chip.style.setProperty("--c2",   rgba(p.color, .05));
+      chip.style.setProperty("--edge", rgba(plit, .7));
+      chip.style.setProperty("--glow", rgba(plit, .45));
+      nm.style.color = plit;
       nm.style.fontWeight = "700";
     }
     chip.appendChild(nm);
@@ -1621,7 +1624,7 @@ function renderBench(){
       const w = document.createElement("span");
       w.className = "where";
       w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
-      if(p.color){ w.style.color = inkOn(p.color); w.style.opacity = ".75" }
+      if(p.color){ w.style.color = glowInk(p.color); w.style.opacity = ".8" }
       chip.appendChild(w);
     } else {
       chip.draggable = true;
@@ -1646,19 +1649,14 @@ function renderBench(){
       tag.className = "claimtag" + (mine ? " me" : "");
       tag.textContent = mine ? "you" : (p.claimedName || "claimed");
       if(p.color){
-        // sit it on the same ink as the name, just a shade softer
-        const ink = inkOn(p.color);
-        tag.style.color = ink;
-        tag.style.opacity = ".8";
-        tag.style.background = ink === "#0a1119" ? "rgba(255,255,255,.28)" : "rgba(0,0,0,.26)";
-        tag.style.padding = "1px 5px";
-        tag.style.borderRadius = "4px";
+        tag.style.color = glowInk(p.color);
+        tag.style.opacity = ".85";
       }
       chip.appendChild(tag);
     }
 
-    const btnInk = p.color ? inkOn(p.color) : null;
-    const btnEdge = btnInk === "#0a1119" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.5)";
+    const btnInk = p.color ? glowInk(p.color) : null;
+    const btnEdge = btnInk ? rgba(btnInk, .5) : "transparent";
 
     const dot = document.createElement("button");
     dot.className = "chip-btn swatch";
@@ -1917,14 +1915,14 @@ function row(en,ci){
 
   const col = en.pid ? colorOf[en.pid] : null;
   const ink = col ? inkOn(col) : null;
+  const lit = col ? glowInk(col) : null;
   if(col){
     r.classList.add("tinted");
-    r.style.setProperty("--c",    rgba(col, .92));
-    r.style.setProperty("--c2",   rgba(mixHex(col, .28), .95));
-    r.style.setProperty("--c3",   rgba(mixHex(col, -.18), .92));
-    r.style.setProperty("--glow", rgba(col, .55));
-    r.style.setProperty("--ink",  ink);
-    r.style.borderColor = rgba(col, .95);
+    r.style.setProperty("--c",    rgba(col, .16));
+    r.style.setProperty("--c2",   rgba(col, .05));
+    r.style.setProperty("--edge", rgba(lit, .75));
+    r.style.setProperty("--glow", rgba(lit, .55));
+    r.style.setProperty("--ink",  lit);
   }
 
   if(editing && editing.ch===ci && editing.id===en.id){
@@ -1945,7 +1943,7 @@ function row(en,ci){
   } else {
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
-    if(ink) who.style.color = ink;
+    if(lit) who.style.color = lit;
     who.draggable = true; who.title = "Drag to another channel";
     who.ondragstart = e => {
       e.stopPropagation();
@@ -1965,7 +1963,7 @@ function row(en,ci){
 
   const clock = document.createElement("span");
   clock.className = "clock"; clock.dataset.at = en.at; clock.textContent = elapsed(en.at);
-  if(ink){ clock.style.color = ink; clock.style.opacity = ".85" }
+  if(lit){ clock.style.color = lit; clock.style.opacity = ".9" }
   if(Date.now()-en.at > 90*60000) clock.classList.add("stale");
   clock.title = "Click to reset the timer";
   clock.onclick = () => send({type:"timer",ch:ci,id:en.id});
@@ -1973,13 +1971,13 @@ function row(en,ci){
 
   const ed = document.createElement("button");
   ed.className = "icon edit"; ed.innerHTML = pencilSVG(); ed.title = "Rename";
-  if(ink){ ed.style.color = ink; ed.style.borderColor = rgba(ink === "#0a1119" ? "#0a1119" : "#ffffff", .35); ed.style.background = "transparent"; }
+  if(lit){ ed.style.color = lit; ed.style.borderColor = rgba(lit, .45); ed.style.background = "transparent"; }
   ed.onclick = () => { editing = {ch:ci,id:en.id}; render() };
   r.appendChild(ed);
 
   const dl = document.createElement("button");
   dl.className = "icon del"; dl.innerHTML = crossSVG(); dl.title = "Remove";
-  if(ink){ dl.style.color = ink; dl.style.borderColor = rgba(ink === "#0a1119" ? "#0a1119" : "#ffffff", .35); dl.style.background = "transparent"; }
+  if(lit){ dl.style.color = lit; dl.style.borderColor = rgba(lit, .45); dl.style.background = "transparent"; }
   dl.onclick = () => send({type:"remove",ch:ci,id:en.id});
   r.appendChild(dl);
   return r;
