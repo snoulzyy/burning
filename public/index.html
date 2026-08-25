@@ -283,7 +283,59 @@
   }
   .ch:hover{border-color:#243546}
   .ch.occupied{border-color:rgba(34,211,238,.5);box-shadow:0 0 26px rgba(34,211,238,.09)}
-  .ch.full{border-color:rgba(239,68,68,.6);box-shadow:0 0 26px rgba(239,68,68,.10)}
+  /* ---------- a full channel is on fire ---------- */
+  .ch.full{
+    position:relative;overflow:hidden;
+    border-color:rgba(249,115,22,.75);
+    animation:fireGlow 2.4s ease-in-out infinite;
+  }
+  .ch.full > *{position:relative;z-index:1}
+  @keyframes fireGlow{
+    0%,100%{box-shadow:0 0 16px -4px rgba(249,115,22,.45), inset 0 -14px 20px -16px rgba(239,68,68,.7)}
+    45%    {box-shadow:0 0 30px 0 rgba(249,115,22,.65), inset 0 -18px 26px -14px rgba(239,68,68,.85)}
+    70%    {box-shadow:0 0 20px -2px rgba(234,88,12,.55), inset 0 -14px 22px -15px rgba(249,115,22,.8)}
+  }
+  /* flames licking up from the bottom edge */
+  .ch.full::before{
+    content:"";position:absolute;left:-12%;right:-12%;bottom:-34%;height:78%;z-index:0;
+    pointer-events:none;
+    background:
+      radial-gradient(58% 100% at 22% 100%,rgba(249,115,22,.34),transparent 70%),
+      radial-gradient(52% 100% at 52% 100%,rgba(234,179,8,.26),transparent 68%),
+      radial-gradient(58% 100% at 80% 100%,rgba(239,68,68,.30),transparent 70%);
+    filter:blur(7px);
+    animation:flicker 2.9s ease-in-out infinite alternate;
+  }
+  @keyframes flicker{
+    0%  {transform:translate3d(-2%,2%,0) scaleY(1);opacity:.85}
+    35% {transform:translate3d(1.5%,-2%,0) scaleY(1.14);opacity:1}
+    60% {transform:translate3d(-1%,1%,0) scaleY(1.04);opacity:.78}
+    100%{transform:translate3d(2%,-3%,0) scaleY(1.18);opacity:.95}
+  }
+  /* embers drifting up and burning out */
+  .ch.full::after{
+    content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+    background-image:
+      radial-gradient(2px 2px   at 18% 100%,rgba(255,196,110,.95),transparent 62%),
+      radial-gradient(1.6px 1.6px at 42% 100%,rgba(255,140,60,.9),transparent 62%),
+      radial-gradient(2.2px 2.2px at 66% 100%,rgba(255,214,150,.85),transparent 62%),
+      radial-gradient(1.6px 1.6px at 86% 100%,rgba(255,120,50,.9),transparent 62%);
+    background-repeat:no-repeat;
+    animation:embers 5s linear infinite;
+  }
+  @keyframes embers{
+    0%  {background-position:0 0,0 0,0 0,0 0;opacity:0}
+    12% {opacity:.9}
+    80% {opacity:.35}
+    100%{background-position:6px -120px,-8px -168px,10px -140px,-6px -186px;opacity:0}
+  }
+  .ch.full .ch-head{background:rgba(249,115,22,.10)}
+  .ch.full .count.full{color:#fdba74;text-shadow:0 0 8px rgba(249,115,22,.8);animation:countFlare 1.7s ease-in-out infinite}
+  @keyframes countFlare{0%,100%{opacity:.85}50%{opacity:1}}
+  @media(prefers-reduced-motion:reduce){
+    .ch.full,.ch.full::before,.ch.full::after,.ch.full .count.full{animation:none}
+    .ch.full::after{opacity:0}
+  }
   .ch.drop{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan);transform:translateY(-2px)}
   .ch.dragging{opacity:.35}
 
