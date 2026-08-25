@@ -295,17 +295,17 @@
     opacity:.92;
   }
   /* top and bottom run left to right */
-  .fire-edge.top,.fire-edge.bot{left:0;right:0;height:34px}
+  .fire-edge.top,.fire-edge.bot{left:0;right:0;height:19px}
   .fire-edge.bot{bottom:0}
   .fire-edge.top{top:0;transform:scaleY(-1)}
   .fire-edge.top i,.fire-edge.bot i{left:0;right:0;bottom:0;height:100%}
   /* sides are the same strip stood on end */
-  .fire-edge.left,.fire-edge.right{top:0;bottom:0;width:34px}
+  .fire-edge.left,.fire-edge.right{top:0;bottom:0;width:16px}
   .fire-edge.left{left:0}
   .fire-edge.right{right:0;transform:scaleX(-1)}
   .fire-edge.left i,.fire-edge.right i{
-    top:0;left:0;height:34px;width:1400px;
-    transform-origin:0 0;transform:translateX(34px) rotate(90deg);
+    top:0;left:0;height:16px;width:1400px;
+    transform-origin:0 0;transform:translateX(16px) rotate(90deg);
   }
   /* soften where the runs meet at the corners */
   .fire-edge.top,.fire-edge.bot{
@@ -335,11 +335,13 @@
   .fire-edge{display:none}
   .has-fire-img .fire-edge{display:block}
   @media(max-width:700px){
-    .fire-edge.top,.fire-edge.bot{height:24px}
-    .fire-edge.left,.fire-edge.right{width:24px}
-    .fire-edge.left i,.fire-edge.right i{height:24px;transform:translateX(24px) rotate(90deg)}
+    .fire-edge.top,.fire-edge.bot{height:14px}
+    .fire-edge.left,.fire-edge.right{width:12px}
+    .fire-edge.left i,.fire-edge.right i{height:12px;transform:translateX(12px) rotate(90deg)}
     .firering{padding:8px}
   }
+  .has-fire-img .ch.full::before,
+  .has-fire-img .ch.full::after{display:none}
   .many-fires .fire-edge i{opacity:.7}
   .many-fires .firering{padding:8px;opacity:.72}
 
@@ -351,9 +353,9 @@
   }
   .ch.full > *:not(.firering):not(.fire-edge){position:relative;z-index:1}
   @keyframes fireGlow{
-    0%,100%{box-shadow:0 0 16px -4px rgba(249,115,22,.5), inset 0 0 22px -14px rgba(239,68,68,.8)}
-    45%    {box-shadow:0 0 32px 0 rgba(249,115,22,.7),  inset 0 0 28px -12px rgba(239,68,68,.9)}
-    70%    {box-shadow:0 0 22px -2px rgba(234,88,12,.6), inset 0 0 24px -13px rgba(249,115,22,.85)}
+    0%,100%{box-shadow:0 0 16px -4px rgba(249,115,22,.5)}
+    45%    {box-shadow:0 0 32px 0 rgba(249,115,22,.7)}
+    70%    {box-shadow:0 0 22px -2px rgba(234,88,12,.6)}
   }
   /* flames licking up from the bottom edge */
   .ch.full::before{
@@ -389,7 +391,7 @@
     80% {opacity:.35}
     100%{background-position:6px -120px,-8px -168px,10px -140px,-6px -186px;opacity:0}
   }
-  .ch.full .ch-head{background:rgba(249,115,22,.10)}
+  .ch.full .ch-head{background:transparent;border-bottom-color:transparent}
   .ch.full .count.full{color:#fdba74;text-shadow:0 0 8px rgba(249,115,22,.8);animation:countFlare 1.7s ease-in-out infinite}
   @keyframes countFlare{0%,100%{opacity:.85}50%{opacity:1}}
   @media(prefers-reduced-motion:reduce){
@@ -466,11 +468,12 @@
   .del:hover{background:rgba(239,68,68,.14);border-color:var(--red)}
 
   .rows{padding:7px 8px 9px;display:flex;flex-direction:column;gap:5px}
-  .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.03)}
+  .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:#0c141d}
   .row:hover{background:rgba(255,255,255,.055)}
   .row.tinted,.chip.tinted{
     position:relative;overflow:hidden;
-    background:linear-gradient(180deg,var(--c),var(--c2));
+    background-color:#0c141d;
+    background-image:linear-gradient(180deg,var(--c),var(--c2));
     border:1px solid var(--edge);
     box-shadow:0 0 12px -3px var(--glow), inset 0 0 14px -8px var(--glow);
     animation:auraGlow 3.8s ease-in-out infinite;
