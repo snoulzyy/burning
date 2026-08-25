@@ -176,6 +176,18 @@
   }
   .colgrid button:hover{transform:scale(1.12)}
   .colgrid button.on{box-shadow:0 0 0 2px #fff inset}
+  .colcustom{display:flex;align-items:center;gap:6px;margin-top:9px}
+  .colcustom input[type=color]{
+    width:34px;height:28px;padding:0;cursor:pointer;background:none;
+    border:1px solid var(--line);border-radius:6px;
+  }
+  .colcustom input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+  .colcustom input[type=color]::-webkit-color-swatch{border:0;border-radius:4px}
+  .hexbox{
+    flex:1;min-width:0;width:88px;font:inherit;font-size:11.5px;padding:6px 8px;
+    color:var(--text);background:#04121a;border:1px solid var(--line);border-radius:6px;
+  }
+  .hexbox:focus{outline:none;border-color:var(--cyan)}
   .chip .drop-btn:hover{color:var(--red);border-color:rgba(239,68,68,.45)}
   @media(max-width:700px){.bench-hint{display:none}}
 
@@ -1458,6 +1470,41 @@ function openColorMenu(anchor, person){
     g.appendChild(b);
   });
   m.appendChild(g);
+
+  // anything else you like — full wheel plus a hex box
+  const custom = document.createElement("div");
+  custom.className = "colcustom";
+
+  const wheel = document.createElement("input");
+  wheel.type = "color";
+  wheel.value = person.color || "#22d3ee";
+  wheel.title = "Pick any colour";
+
+  const hex = document.createElement("input");
+  hex.type = "text";
+  hex.className = "hexbox";
+  hex.value = person.color || "";
+  hex.placeholder = "#rrggbb";
+  hex.maxLength = 7;
+  hex.spellcheck = false;
+
+  const apply = col => {
+    if(!/^#[0-9a-fA-F]{6}$/.test(col)) return;
+    send({ type:"person-color", id:person.id, color:col.toLowerCase() });
+  };
+  wheel.oninput = () => { hex.value = wheel.value; };
+  wheel.onchange = () => { closeMenu(); apply(wheel.value); };
+  hex.onkeydown = e => {
+    if(e.key === "Enter"){
+      const v = hex.value.trim();
+      if(/^#?[0-9a-fA-F]{6}$/.test(v)){ closeMenu(); apply(v[0] === "#" ? v : "#" + v); }
+    }
+    if(e.key === "Escape") closeMenu();
+  };
+
+  custom.append(wheel, hex);
+  m.appendChild(custom);
+
   document.body.appendChild(m);
 
   const r = anchor.getBoundingClientRect();
