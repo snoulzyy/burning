@@ -339,6 +339,8 @@ io.on("connection", socket => {
         const area = areaOf(region);
         const p = findPerson(a.id, area);
         if (!p) return;
+        // a claimed name can only be deleted by whoever claimed it
+        if (p.claimedBy && p.claimedBy !== clean(a.token, 64)) return;
         liftPerson(p.id, area);
         state.rosters[area] = state.rosters[area].filter(x => x.id !== p.id);
         persist();

@@ -353,6 +353,10 @@
   .rows{padding:7px 8px 9px;display:flex;flex-direction:column;gap:5px}
   .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.03)}
   .row:hover{background:rgba(255,255,255,.055)}
+  .row.tinted{border:1px solid transparent}
+  .row.tinted:hover{filter:brightness(1.08)}
+  .row.tinted .who{font-weight:700}
+  .row.tinted .icon:hover{background:rgba(255,255,255,.18)}
   .row.dragging{opacity:.3}
   .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-family:var(--name-face);font-weight:600;font-size:13.5px;letter-spacing:.005em;cursor:grab}
@@ -615,6 +619,25 @@ const PALETTE = ["#22d3ee","#2dd4bf","#22c55e","#a3e635","#eab308","#f59e0b",
 let colorOf = {};       // pid -> colour, rebuilt whenever the roster arrives
 
 let colorByName = {};   // lowercase name -> colour, for chat lines
+
+function hexRGB(hex){
+  const h = (hex || "").replace("#", "");
+  if(h.length !== 6) return null;
+  return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) };
+}
+// how bright a colour reads to the eye, 0 (black) to 1 (white)
+function luminance(hex){
+  const c = hexRGB(hex);
+  if(!c) return 0;
+  const f = v => { v /= 255; return v <= .03928 ? v/12.92 : Math.pow((v + .055)/1.055, 2.4) };
+  return .2126*f(c.r) + .7152*f(c.g) + .0722*f(c.b);
+}
+// black on light colours, near-white on dark ones — always legible
+const inkOn = hex => luminance(hex) > .42 ? "#0a1119" : "#f2f8fd";
+function rgba(hex, a){
+  const c = hexRGB(hex);
+  return c ? `rgba(${c.r},${c.g},${c.b},${a})` : "transparent";
+}
 function recomputeColors(){
   colorOf = {};
   colorByName = {};
@@ -1538,7 +1561,12 @@ function renderBench(){
     const nm = document.createElement("span");
     nm.className = "nm";
     nm.textContent = p.name;
-    if(p.color) nm.style.color = p.color;
+    if(p.color){
+      chip.style.background = rgba(p.color, .88);
+      chip.style.borderColor = rgba(p.color, .95);
+      nm.style.color = inkOn(p.color);
+      nm.style.fontWeight = "700";
+    }
     chip.appendChild(nm);
 
     if(at){
@@ -1605,7 +1633,7 @@ function renderBench(){
     };
     chip.appendChild(claim);
 
-    if(!at){
+    if(!at && (!p.claimedBy || mine)){
       const del = document.createElement("button");
       del.className = "chip-btn drop-btn";
       del.innerHTML = crossSVG();
@@ -1613,7 +1641,7 @@ function renderBench(){
       del.onclick = ev => {
         ev.stopPropagation();
         if(confirm("Remove " + p.name + " from the people list?")){
-          send({ type:"person-remove", id:p.id });
+          send({ type:"person-remove", id:p.id, token:myToken });
         }
       };
       chip.appendChild(del);
@@ -1819,6 +1847,15 @@ function row(en,ci){
   const r = document.createElement("div");
   r.className = "row";
 
+  const col = en.pid ? colorOf[en.pid] : null;
+  const ink = col ? inkOn(col) : null;
+  if(col){
+    r.classList.add("tinted");
+    r.style.background = rgba(col, .88);
+    r.style.borderColor = rgba(col, .95);
+    r.style.setProperty("--ink", ink);
+  }
+
   if(editing && editing.ch===ci && editing.id===en.id){
     const inp = document.createElement("input");
     inp.value = en.name; inp.maxLength = 24;
@@ -1837,7 +1874,7 @@ function row(en,ci){
   } else {
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
-    if(en.pid && colorOf[en.pid]) who.style.color = colorOf[en.pid];
+    if(ink) who.style.color = ink;
     who.draggable = true; who.title = "Drag to another channel";
     who.ondragstart = e => {
       e.stopPropagation();
@@ -1857,6 +1894,7 @@ function row(en,ci){
 
   const clock = document.createElement("span");
   clock.className = "clock"; clock.dataset.at = en.at; clock.textContent = elapsed(en.at);
+  if(ink){ clock.style.color = ink; clock.style.opacity = ".85" }
   if(Date.now()-en.at > 90*60000) clock.classList.add("stale");
   clock.title = "Click to reset the timer";
   clock.onclick = () => send({type:"timer",ch:ci,id:en.id});
@@ -1864,11 +1902,13 @@ function row(en,ci){
 
   const ed = document.createElement("button");
   ed.className = "icon edit"; ed.innerHTML = pencilSVG(); ed.title = "Rename";
+  if(ink){ ed.style.color = ink; ed.style.borderColor = rgba(ink === "#0a1119" ? "#0a1119" : "#ffffff", .35); ed.style.background = "transparent"; }
   ed.onclick = () => { editing = {ch:ci,id:en.id}; render() };
   r.appendChild(ed);
 
   const dl = document.createElement("button");
   dl.className = "icon del"; dl.innerHTML = crossSVG(); dl.title = "Remove";
+  if(ink){ dl.style.color = ink; dl.style.borderColor = rgba(ink === "#0a1119" ? "#0a1119" : "#ffffff", .35); dl.style.background = "transparent"; }
   dl.onclick = () => send({type:"remove",ch:ci,id:en.id});
   r.appendChild(dl);
   return r;
