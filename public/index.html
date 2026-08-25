@@ -602,11 +602,40 @@ const PALETTE = ["#22d3ee","#2dd4bf","#22c55e","#a3e635","#eab308","#f59e0b",
                  "#f97316","#ef4444","#f472b6","#a855f7","#60a5fa","#dbe7f2"];
 let colorOf = {};       // pid -> colour, rebuilt whenever the roster arrives
 
+let colorByName = {};   // lowercase name -> colour, for chat lines
 function recomputeColors(){
   colorOf = {};
+  colorByName = {};
   Object.keys(rosters).forEach(area =>
-    (rosters[area] || []).forEach(p => { if(p.color) colorOf[p.id] = p.color }));
+    (rosters[area] || []).forEach(p => {
+      if(!p.color) return;
+      colorOf[p.id] = p.color;
+      colorByName[p.name.trim().toLowerCase()] = p.color;
+    }));
 }
+
+let myClaimNames = new Set();
+try { myClaimNames = new Set(JSON.parse(localStorage.getItem("ct:claims") || "[]")) } catch(e){}
+function saveClaimNames(){
+  try { localStorage.setItem("ct:claims", JSON.stringify([...myClaimNames])) } catch(e){}
+}
+
+// if a redeploy wiped the server list, quietly take our names back
+function reclaimMine(){
+  if(!myClaimNames.size) return;
+  Object.keys(rosters).forEach(area =>
+    (rosters[area] || []).forEach(p => {
+      const key = p.name.trim().toLowerCase();
+      if(!myClaimNames.has(key)) return;
+      if(p.claimedBy === myToken) return;      // already ours
+      if(p.claimedBy) { myClaimNames.delete(key); saveClaimNames(); return; }  // someone else took it
+      send({ type:"claim", pid:p.id, token:myToken, who:me, region: regionOfArea(area) });
+    }));
+}
+const regionOfArea = area => {
+  const hit = regionList.find(r => r.enabled && r.area === area);
+  return hit ? hit.id : region;
+};
 
 function recomputeMine(){
   myIds = new Set();
@@ -1141,8 +1170,10 @@ socket.on("roster", obj => {
   rosters = (obj && typeof obj === "object") ? obj : {};
   recomputeMine();
   recomputeColors();
+  reclaimMine();
   renderBench();
   render();
+  renderLog();
 });
 
 socket.on("chatlog", arr => {
@@ -1515,8 +1546,12 @@ function renderBench(){
         return;
       }
       if(mine){
+        myClaimNames.delete(p.name.trim().toLowerCase());
+        saveClaimNames();
         send({ type:"unclaim", pid:p.id, token:myToken });
       } else {
+        myClaimNames.add(p.name.trim().toLowerCase());
+        saveClaimNames();
         send({ type:"claim", pid:p.id, token:myToken, who:me });
         try { if(window.Notification && Notification.permission === "default") Notification.requestPermission() } catch(e){}
       }
@@ -1862,7 +1897,11 @@ function paintLog(el, items, emptyMsg){
     line.querySelector(".t").textContent = "[" + stamp(item.t) + "]";
     const src = line.querySelector(".src");
     src.textContent = item.who ? item.who : region + " System";
-    if(item.who) src.classList.add("user");
+    if(item.who){
+      src.classList.add("user");
+      const col = colorByName[item.who.trim().toLowerCase()];
+      if(col) src.style.color = col;
+    }
     const msgEl = line.querySelector(".msg");
     if(item.who) msgEl.appendChild(messageNodes(item.msg));
     else msgEl.textContent = item.msg;
