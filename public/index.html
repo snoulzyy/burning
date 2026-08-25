@@ -22,6 +22,9 @@
     --green:#22c55e;
     --amber:#f59e0b;
     --red:#ef4444;
+    /* how solid the panels are once a background video/image is in play.
+       1 = opaque, 0 = fully see-through. Nudge until it reads right. */
+    --glass:.62;
   }
   *{box-sizing:border-box}
   html,body{margin:0;min-height:100%}
@@ -741,6 +744,49 @@
     .who{font-size:12.5px}
     footer{margin-top:16px}
   }
+
+  /* ---------- glass, only once a background is behind it ---------- */
+  html.has-bg .ch{
+    background:linear-gradient(180deg,rgba(12,20,29,var(--glass)),rgba(10,17,25,var(--glass)));
+    backdrop-filter:blur(9px) saturate(1.15);
+    -webkit-backdrop-filter:blur(9px) saturate(1.15);
+    border-color:rgba(120,160,200,.16);
+  }
+  html.has-bg .ch:hover{border-color:rgba(140,190,230,.3)}
+  html.has-bg .row{background:rgba(12,20,29,calc(var(--glass) + .12))}
+  html.has-bg .row.tinted{background-color:rgba(12,20,29,calc(var(--glass) + .06))}
+
+  html.has-bg .bench,
+  html.has-bg .chat,
+  html.has-bg .tabs,
+  html.has-bg .logo{
+    background:rgba(10,17,25,var(--glass));
+    backdrop-filter:blur(11px) saturate(1.15);
+    -webkit-backdrop-filter:blur(11px) saturate(1.15);
+    border-color:rgba(120,160,200,.18);
+  }
+  html.has-bg .say{background:rgba(9,15,22,calc(var(--glass) + .08))}
+  html.has-bg .chip{background:rgba(16,26,37,calc(var(--glass) + .1))}
+  html.has-bg .ghost,
+  html.has-bg .icon,
+  html.has-bg .add,
+  html.has-bg .durbtn{background:rgba(16,26,37,calc(var(--glass) + .05))}
+
+  /* popovers stay readable — they hold numbers people act on */
+  html.has-bg .pctmenu,
+  html.has-bg .nextmenu,
+  html.has-bg .durmenu,
+  html.has-bg .colmenu,
+  html.has-bg .picker,
+  html.has-bg .modal-box{
+    background:rgba(8,14,21,.94);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+  }
+
+  /* a touch more contrast under the text, since the video moves behind it */
+  html.has-bg .wrap{text-shadow:0 1px 2px rgba(0,0,0,.45)}
+  html.has-bg .bgmedia{opacity:.62}
   :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
