@@ -151,14 +151,14 @@
   .next-row .n-slots{margin-left:auto;font-size:10px;color:var(--dim)}
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
   .movebtn{
-    width:20px;height:20px;flex:none;display:grid;place-items:center;padding:0;
+    width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.08);
     color:var(--cyan);cursor:pointer;line-height:0;transition:.15s;
   }
   .movebtn:hover{background:rgba(34,211,238,.2);border-color:var(--cyan)}
   .movebtn svg{width:12px;height:12px;display:block}
   .durbtn{
-    width:20px;height:20px;flex:none;display:grid;place-items:center;padding:0;
+    width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);
     color:var(--amber);cursor:pointer;line-height:0;transition:.15s;
   }
@@ -1501,8 +1501,9 @@ function card(c,i){
 
   if(c.pctAt){
     const t = document.createElement("span");
-    t.className = "ago"; t.dataset.at = c.pctAt; t.textContent = ago(c.pctAt);
-    t.title = "burning % last changed";
+    t.className = "ago"; t.dataset.at = c.pctAt;
+    t.textContent = ago(c.pctAt).replace(" ago", "");
+    t.title = "burning % last changed " + ago(c.pctAt);
     head.appendChild(t);
   }
 
@@ -1858,7 +1859,11 @@ setInterval(() => {
   document.getElementById("refreshed").textContent =
     new Date().toISOString().slice(11,19) + " UTC";
   checkChannelTimers();
-  document.querySelectorAll(".ago").forEach(a => { a.textContent = ago(+a.dataset.at) });
+  document.querySelectorAll(".ago").forEach(a => {
+    const t = ago(+a.dataset.at);
+    a.textContent = t.replace(" ago", "");
+    a.title = "burning % last changed " + t;
+  });
   document.querySelectorAll(".clock").forEach(c => {
     const at = +c.dataset.at;
     c.textContent = elapsed(at);
