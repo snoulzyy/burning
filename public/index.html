@@ -32,6 +32,17 @@
     position:relative;isolation:isolate;
   }
 
+  /* ---------- your own background, if one is on disk ---------- */
+  .bgmedia{
+    position:fixed;inset:0;width:100%;height:100%;z-index:-4;pointer-events:none;
+    object-fit:cover;background-size:cover;background-position:center;
+    display:none;opacity:.5;filter:saturate(1.05) contrast(1.02);
+  }
+  /* the neon eases off so it sits over your media instead of fighting it */
+  .has-bg body::after,
+  html.has-bg body::after{opacity:.55}
+  html.has-bg body::before{opacity:.75}
+
   /* ---------- live background: dark cyberpunk ---------- */
   /* neon haze — magenta rising from the horizon, cyan and violet overhead */
   body::after{
@@ -227,7 +238,21 @@
   .next-row:hover{background:rgba(34,211,238,.09);border-color:rgba(34,211,238,.3)}
   .next-row .n-ch{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text)}
   .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
-  .next-row .n-slots{margin-left:auto;font-size:10px;color:var(--dim)}
+  .next-row .n-slots{font-size:10px;color:var(--dim);margin-left:6px}
+  .next-row .n-drift{
+    margin-left:auto;font-size:10.5px;font-weight:700;color:#fbbf24;min-width:26px;text-align:right;
+  }
+  .next-row .n-drift.flat{color:#fbbf24}
+  .next-row .n-drift.down{color:#f87171}
+  .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;margin-left:2px}
+  .next-row .n-go svg{width:11px;height:11px;display:block}
+  .next-row:hover .n-go{color:var(--cyan)}
+  .next-row .n-soon{margin-left:6px}
+  .curfew{
+    margin:-2px 0 8px;padding:5px 7px;border-radius:6px;
+    font-size:9.5px;letter-spacing:.05em;color:#93c5fd;
+    background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.28);
+  }
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
   .movebtn{
     width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
@@ -693,6 +718,8 @@
 </style>
 
 <body>
+<video class="bgmedia" id="bgVideo" autoplay muted loop playsinline aria-hidden="true"></video>
+<div class="bgmedia" id="bgStill" aria-hidden="true"></div>
 <div class="sheen" aria-hidden="true"></div>
 <div class="sticker-layer" id="stickerLayer" aria-hidden="true"></div>
 <div class="wrap">
@@ -1446,6 +1473,52 @@ socket.on("sync", s => {
 
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
+/* ---------------- projected burning ----------------
+   A channel only decays once it has been farmed and then left empty:
+     - 10% goes the moment the last person leaves
+     - another 10% per hour after that
+   Nothing moves during curfew, 22:00–08:00 UTC (the -2 to +8 window).
+   Channels nobody has touched keep whatever they're set to.
+   ------------------------------------------------------------------ */
+const CURFEW_START = 22;   // UTC hour decay stops
+const CURFEW_END   = 8;    // UTC hour it starts again
+const LEAVE_LOSS   = 10;   // % lost as the last person walks
+const HOURLY_LOSS  = 10;   // % lost per active hour after that
+
+// milliseconds between two times that actually count, curfew removed
+function activeMsBetween(from, to){
+  if(to <= from) return 0;
+  let total = 0;
+  const day = 86400000;
+  let cursor = new Date(from);
+  cursor.setUTCHours(0, 0, 0, 0);
+  for(let guard = 0; guard < 400 && cursor.getTime() < to; guard++){
+    const dayStart = cursor.getTime();
+    const winStart = dayStart + CURFEW_END * 3600000;      // 08:00 UTC
+    const winEnd   = dayStart + CURFEW_START * 3600000;    // 22:00 UTC
+    const a = Math.max(from, winStart);
+    const b = Math.min(to, winEnd);
+    if(b > a) total += b - a;
+    cursor = new Date(dayStart + day);
+  }
+  return total;
+}
+
+// what a channel is probably sitting at right now
+function projectedPct(c){
+  if(!c || c.entries.length) return null;          // someone's on it, no guess needed
+  if(!c.emptiedAt) return null;                    // never farmed, nothing to decay
+  const hours = activeMsBetween(c.emptiedAt, Date.now()) / 3600000;
+  const lost = LEAVE_LOSS + HOURLY_LOSS * hours;
+  return Math.max(0, Math.min(100, Math.round(c.pct - lost)));
+}
+
+// true while the clock is inside the freeze window
+function inCurfew(d){
+  const h = (d || new Date()).getUTCHours();
+  return h >= CURFEW_START || h < CURFEW_END;
+}
+
 /* ---------------- next up ----------------
    Channels worth moving to: must have room, ranked by burning % first,
    emptier ones ahead of busier ones at the same percentage.
@@ -1469,9 +1542,12 @@ function rankChannels(skipIdx){
       const oldest = c.entries.length
         ? Math.max(...c.entries.map(e => now - e.at))
         : 0;
+      const proj = projectedPct(c);
       return {
         idx,
-        pct: c.pct,
+        pct: proj === null ? c.pct : proj,
+        shown: c.pct,
+        proj,
         taken: c.entries.length,
         mins: Math.floor(oldest / 60000),
         soon: c.entries.length >= CAP && oldest >= FREEING_MINUTES * 60000
@@ -1562,7 +1638,7 @@ function openNextMenu(anchor, fromIdx){
   const head = document.createElement("div");
   head.className = "mhead";
   const h = document.createElement("h4");
-  h.textContent = "MOVE TO";
+  h.textContent = "PROJECTED BURNS";
   head.appendChild(h);
 
   const grp = document.createElement("div");
@@ -1580,6 +1656,13 @@ function openNextMenu(anchor, fromIdx){
   grp.append(lbl, minus, num, plus);
   head.appendChild(grp);
   m.appendChild(head);
+
+  if(inCurfew()){
+    const frozen = document.createElement("div");
+    frozen.className = "curfew";
+    frozen.textContent = "curfew 22:00–08:00 UTC — burning frozen";
+    m.appendChild(frozen);
+  }
 
   const body = document.createElement("div");
   body.className = "next-body";
@@ -1607,7 +1690,22 @@ function openNextMenu(anchor, fromIdx){
       const col = pctColor(c.pct);
       pct.textContent = c.pct + "%";
       pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
+      if(c.proj !== null) pct.title = "confirmed " + c.shown + "%, projected " + c.proj + "%";
       row.appendChild(pct);
+
+      // how far it has drifted from the last confirmed reading
+      const drift = document.createElement("span");
+      drift.className = "n-drift";
+      if(c.proj === null){
+        drift.textContent = "+0";
+        drift.classList.add("flat");
+      } else {
+        const d = c.proj - c.shown;
+        drift.textContent = (d > 0 ? "+" : "") + d;
+        if(d === 0) drift.classList.add("flat");
+        else if(d < 0) drift.classList.add("down");
+      }
+      row.appendChild(drift);
 
       if(c.soon){
         const tag = document.createElement("span");
@@ -1620,6 +1718,11 @@ function openNextMenu(anchor, fromIdx){
         slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
         row.appendChild(slots);
       }
+
+      const go = document.createElement("span");
+      go.className = "n-go";
+      go.innerHTML = chevron("right");
+      row.appendChild(go);
 
       row.onclick = () => {
         closeMenu();
@@ -2385,6 +2488,39 @@ function checkChannelTimers(){
   });
   if(priming) timersPrimed = true;
 }
+
+/* Drop a background into public/img/ and it appears behind everything:
+     bg.mp4  (or bg.webm)  — video, looped and muted
+     bg.jpg  / bg.png / bg.webp / bg.gif — a still
+   Nothing there? The cyberpunk layers carry on as they are. */
+(function(){
+  const vid = document.getElementById("bgVideo");
+  const still = document.getElementById("bgStill");
+  const videos = ["/img/bg.mp4", "/img/bg.webm"];
+  const stills = ["/img/bg.jpg", "/img/bg.png", "/img/bg.webp", "/img/bg.gif"];
+
+  const show = el => {
+    el.style.display = "block";
+    document.documentElement.classList.add("has-bg");
+  };
+
+  function tryStills(i){
+    if(i >= stills.length) return;
+    const probe = new Image();
+    probe.onload = () => { still.style.backgroundImage = "url('" + stills[i] + "')"; show(still); };
+    probe.onerror = () => tryStills(i + 1);
+    probe.src = stills[i];
+  }
+
+  function tryVideos(i){
+    if(i >= videos.length) return tryStills(0);
+    vid.onloadeddata = () => show(vid);
+    vid.onerror = () => tryVideos(i + 1);
+    vid.src = videos[i];
+    vid.load();
+  }
+  tryVideos(0);
+})();
 
 // if public/img/fire.gif is there, the flame layers switch to it
 (function(){

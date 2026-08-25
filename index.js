@@ -12,6 +12,7 @@ const LOG_MAX = 300;
 // Add a region here and it gets its own URL, its own board, its own chat.
 // Flip `enabled` to true when you're ready to open it up.
 const REGIONS = [
+  { id: "B1",   area: "B1",  enabled: true },
   { id: "RD1",  area: "RD",  enabled: true },
   { id: "RD2",  area: "RD",  enabled: true },
   { id: "RD4",  area: "RD",  enabled: true },
@@ -26,7 +27,7 @@ const byId = id => REGIONS.find(r => r.id === id);
 
 /* ---------------- state ---------------- */
 const blankRegion = () => ({
-  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, entries: [] })),
+  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, emptiedAt: null, entries: [] })),
   log: []
 });
 
@@ -163,6 +164,7 @@ io.on("connection", socket => {
     const r = byId(region);
     if (!r || !r.enabled) return;
     const board = state[region].channels;
+    const before = board.map(c => c.entries.length);
     const by = clean(a.by, 24) || "someone";
     const at = Number(a.ch);
     const target = board[at];
@@ -376,6 +378,13 @@ io.on("connection", socket => {
       default:
         return;
     }
+    // a channel only decays once it has been farmed and then abandoned
+    board.forEach((c, i) => {
+      const now = c.entries.length;
+      if (before[i] > 0 && now === 0) c.emptiedAt = Date.now();
+      else if (now > 0) c.emptiedAt = null;
+    });
+
     persist();
     broadcast(region);
   });
