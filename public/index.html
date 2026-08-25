@@ -208,10 +208,11 @@
   /* ---------------- next up (floats over the board) ---------------- */
   .nextmenu{
     position:fixed;z-index:60;width:212px;padding:9px;border-radius:12px;
-    background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
+    background:#0a1119;border:1px solid rgba(167,139,250,.45);
+    box-shadow:0 18px 44px rgba(0,0,0,.7), 0 0 16px -6px rgba(167,139,250,.8);
   }
   .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 0 8px}
-  .nextmenu h4{margin:0;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
+  .nextmenu h4{margin:0;font:inherit;font-size:9.5px;font-weight:600;letter-spacing:.16em;color:#c4b5fd}
   .grp{display:flex;align-items:center;gap:3px;margin-left:auto}
   .grp span{font-size:10px;color:var(--dim);letter-spacing:.06em}
   .grp b{font-size:11.5px;color:var(--text);min-width:12px;text-align:center}
@@ -235,18 +236,18 @@
     display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;
     background:none;border:1px solid transparent;cursor:pointer;font:inherit;text-align:left;
   }
-  .next-row:hover{background:rgba(34,211,238,.09);border-color:rgba(34,211,238,.3)}
+  .next-row:hover{background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.4)}
   .next-row .n-ch{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text)}
   .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
   .next-row .n-slots{font-size:10px;color:var(--dim);margin-left:6px}
   .next-row .n-drift{
-    margin-left:auto;font-size:10.5px;font-weight:700;color:#fbbf24;min-width:26px;text-align:right;
+    margin-left:auto;font-size:10.5px;font-weight:700;color:#4ade80;min-width:26px;text-align:right;
   }
   .next-row .n-drift.flat{color:#fbbf24}
   .next-row .n-drift.down{color:#f87171}
   .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;margin-left:2px}
   .next-row .n-go svg{width:11px;height:11px;display:block}
-  .next-row:hover .n-go{color:var(--cyan)}
+  .next-row:hover .n-go{color:#c4b5fd}
   .next-row .n-soon{margin-left:6px}
   .curfew{
     margin:-2px 0 8px;padding:5px 7px;border-radius:6px;
@@ -256,11 +257,35 @@
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
   .movebtn{
     width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
-    border-radius:5px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.08);
-    color:var(--cyan);cursor:pointer;line-height:0;transition:.15s;
+    border-radius:5px;border:1px solid rgba(167,139,250,.5);
+    background:linear-gradient(140deg,rgba(167,139,250,.20),rgba(236,72,153,.16));
+    color:#c4b5fd;cursor:pointer;line-height:0;transition:.15s;
+    box-shadow:0 0 8px -3px rgba(167,139,250,.9);
   }
-  .movebtn:hover{background:rgba(34,211,238,.2);border-color:var(--cyan)}
+  .movebtn:hover{
+    color:#e9d5ff;border-color:#a78bfa;
+    background:linear-gradient(140deg,rgba(167,139,250,.38),rgba(236,72,153,.30));
+    box-shadow:0 0 12px -2px rgba(167,139,250,1);
+  }
   .movebtn svg{width:12px;height:12px;display:block}
+  .mvpbtn{
+    flex:none;padding:2px 6px;border-radius:5px;cursor:pointer;
+    font:inherit;font-size:9.5px;font-weight:800;letter-spacing:.09em;line-height:1.5;
+    color:#fecdd3;border:1px solid rgba(244,63,94,.55);
+    background:linear-gradient(140deg,rgba(244,63,94,.24),rgba(249,115,22,.18));
+    box-shadow:0 0 8px -3px rgba(244,63,94,.9);
+    transition:.15s;
+  }
+  .mvpbtn:hover{
+    color:#fff;border-color:#fb7185;
+    background:linear-gradient(140deg,rgba(244,63,94,.45),rgba(249,115,22,.34));
+    box-shadow:0 0 12px -2px rgba(244,63,94,1);
+  }
+  .mvpbtn.fired{animation:mvpFire .45s ease-in-out 2}
+  @keyframes mvpFire{
+    0%,100%{transform:scale(1);box-shadow:0 0 10px -3px rgba(244,63,94,.9)}
+    50%    {transform:scale(1.14);box-shadow:0 0 18px 0 rgba(244,63,94,1)}
+  }
   .durbtn{
     width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);
@@ -1234,6 +1259,11 @@ const HELP_HTML = `
      40 minutes? Hit the amber clock on the channel and set the true duration.
      It applies to everyone on that channel at once.</p>
 
+  <h5>MVP CALL</h5>
+  <p>Hit the red <span class="k">MVP</span> button on a channel and everyone whose name
+     is on that channel gets an alarm — sound, popup, flashing tab. Nobody else hears
+     a thing, so it won't bother people grinding elsewhere.</p>
+
   <h5>40 MINUTE ALERT</h5>
   <p>On RD1, RD2 and RD4 only: when someone on a channel hits 40 minutes, everyone
      <em>on that channel</em> gets a sound and a popup. Nobody else is bothered by it.
@@ -1326,6 +1356,31 @@ function beep(startAt){
     o.start(t); o.stop(t + 0.36);
   });
 }
+// two-tone, four bursts — deliberately different from the timer chime
+function mvpAlarm(){
+  if(!soundOn) return;
+  primeAudio();
+  if(!audioCtx || audioCtx.state !== "running"){
+    pendingAlarm = true;
+    showAudioBanner();
+    return;
+  }
+  const now = audioCtx.currentTime;
+  for(let i = 0; i < 4; i++){
+    [1046.5, 1396.9].forEach((f, j) => {
+      const t = now + i * 0.34 + j * 0.16;
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "square";
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.18);
+    });
+  }
+}
+
 function alarm(){
   if(!soundOn) return;
   primeAudio();
@@ -1447,6 +1502,31 @@ socket.on("roster", obj => {
   renderLog();
 });
 
+socket.on("mvp", m => {
+  if(!m) return;
+  const r = m.region || region;
+  const c = (boards[r] || [])[m.ch];
+  if(!c) return;
+  const label = r + " " + chLabel(m.ch);
+
+  // not your channel? stay quiet — this is for whoever is grinding it
+  if(!onThisChannel(c)){
+    if(m.by === me) toast("MVP call sent to " + label);
+    return;
+  }
+  mvpAlarm();
+  flashTitle("MVP " + label);
+  try {
+    if(window.Notification && Notification.permission === "granted"){
+      const n = new Notification("MVP — " + label, {
+        body: (m.by || "someone") + " called it", requireInteraction: true
+      });
+      n.onclick = () => { window.focus(); stopFlash(); n.close(); };
+    }
+  } catch(e){}
+  toast("MVP on " + label + " — called by " + (m.by || "someone"));
+});
+
 socket.on("chatlog", arr => {
   chat = Array.isArray(arr) ? arr : [];
   renderLog();
@@ -1474,16 +1554,16 @@ socket.on("sync", s => {
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
 /* ---------------- projected burning ----------------
-   A channel only decays once it has been farmed and then left empty:
-     - 10% goes the moment the last person leaves
-     - another 10% per hour after that
-   Nothing moves during curfew, 22:00–08:00 UTC (the -2 to +8 window).
-   Channels nobody has touched keep whatever they're set to.
+   An empty channel climbs 10% an hour, from whichever is more recent:
+     - the last confirmed reading someone punched in, or
+     - the moment the last person left, which costs 10% straight away
+   The clock stops during curfew, 22:00–08:00 UTC (the -2 to +8 window),
+   and burning never slides back down while frozen.
    ------------------------------------------------------------------ */
-const CURFEW_START = 22;   // UTC hour decay stops
+const CURFEW_START = 22;   // UTC hour the climb stops
 const CURFEW_END   = 8;    // UTC hour it starts again
-const LEAVE_LOSS   = 10;   // % lost as the last person walks
-const HOURLY_LOSS  = 10;   // % lost per active hour after that
+const LEAVE_LOSS   = 10;   // % knocked off as the last person walks
+const HOURLY_GAIN  = 10;   // % gained per active hour while empty
 
 // milliseconds between two times that actually count, curfew removed
 function activeMsBetween(from, to){
@@ -1506,11 +1586,22 @@ function activeMsBetween(from, to){
 
 // what a channel is probably sitting at right now
 function projectedPct(c){
-  if(!c || c.entries.length) return null;          // someone's on it, no guess needed
-  if(!c.emptiedAt) return null;                    // never farmed, nothing to decay
-  const hours = activeMsBetween(c.emptiedAt, Date.now()) / 3600000;
-  const lost = LEAVE_LOSS + HOURLY_LOSS * hours;
-  return Math.max(0, Math.min(100, Math.round(c.pct - lost)));
+  if(!c || c.entries.length) return null;          // someone's on it, they can see the real number
+
+  const left = c.emptiedAt || 0;
+  const set  = c.pctAt || 0;
+  if(!left && !set) return null;                   // nothing to measure from
+
+  // start from the later of the two, and pay the leave penalty if that's the one
+  let start = c.pct;
+  let anchor = set;
+  if(left >= set){
+    anchor = left;
+    start = c.pct - LEAVE_LOSS;
+  }
+
+  const hours = activeMsBetween(anchor, Date.now()) / 3600000;
+  return Math.max(0, Math.min(100, Math.round(start + HOURLY_GAIN * hours)));
 }
 
 // true while the clock is inside the freeze window
@@ -2087,6 +2178,20 @@ function card(c,i){
     dur.title = "Set how long this channel has really been going";
     dur.onclick = e => { e.stopPropagation(); openDurationMenu(dur, i); };
     head.appendChild(dur);
+  }
+
+  if(c.entries.length){
+    const mvp = document.createElement("button");
+    mvp.className = "mvpbtn";
+    mvp.textContent = "MVP";
+    mvp.title = "Sound the alarm for everyone on " + chLabel(i);
+    mvp.onclick = e => {
+      e.stopPropagation();
+      socket.emit("mvp", { region, ch:i, by:me });
+      mvp.classList.add("fired");
+      setTimeout(() => mvp.classList.remove("fired"), 900);
+    };
+    head.appendChild(mvp);
   }
 
   if(c.entries.length){
