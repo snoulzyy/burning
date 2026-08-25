@@ -173,10 +173,14 @@ io.on("connection", socket => {
       case "pct": {
         if (!target) return;
         const v = Math.max(0, Math.min(100, Math.round(Number(a.pct) / 10) * 10));
-        if (target.pct === v) return;
+        // picking the same number again is a fresh confirmation:
+        // the reading still stands, so the projection clock restarts from now
+        const same = target.pct === v;
         target.pct = v;
         target.pctAt = Date.now();
-        note(region, `${ch(at)} burning set to ${v}% by ${by}`);
+        note(region, same
+          ? `${ch(at)} still ${v}% — confirmed by ${by}`
+          : `${ch(at)} burning set to ${v}% by ${by}`);
         break;
       }
       case "add": {

@@ -207,7 +207,7 @@
 
   /* ---------------- next up (floats over the board) ---------------- */
   .nextmenu{
-    position:fixed;z-index:60;width:212px;padding:9px;border-radius:12px;
+    position:fixed;z-index:60;width:246px;padding:9px;border-radius:12px;
     background:#0a1119;border:1px solid rgba(167,139,250,.45);
     box-shadow:0 18px 44px rgba(0,0,0,.7), 0 0 16px -6px rgba(167,139,250,.8);
   }
@@ -240,11 +240,12 @@
   .next-row .n-ch{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text)}
   .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
   .next-row .n-slots{font-size:10px;color:var(--dim);margin-left:6px}
-  .next-row .n-drift{
-    margin-left:auto;font-size:10.5px;font-weight:700;color:#4ade80;min-width:26px;text-align:right;
+  .next-row .n-tick{
+    margin-left:auto;font-size:9.5px;font-weight:700;color:#4ade80;
+    white-space:nowrap;text-align:right;
   }
-  .next-row .n-drift.flat{color:#fbbf24}
-  .next-row .n-drift.down{color:#f87171}
+  .next-row .n-tick.flat{color:var(--dim)}
+  .next-row .n-tick.frozen{color:#93c5fd}
   .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;margin-left:2px}
   .next-row .n-go svg{width:11px;height:11px;display:block}
   .next-row:hover .n-go{color:#c4b5fd}
@@ -594,7 +595,8 @@
     position:fixed;z-index:60;padding:12px;border-radius:12px;
     background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
   }
-  .pctmenu h4{margin:0 0 9px;font:inherit;font-size:10px;font-weight:500;letter-spacing:.18em;color:var(--dim)}
+  .pcthint{margin:0 0 9px;font-size:9.5px;color:#4a5f74;letter-spacing:.02em}
+  .pctmenu h4{margin:0 0 5px;font:inherit;font-size:10px;font-weight:500;letter-spacing:.18em;color:var(--dim)}
   .pctgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
   .pctgrid button{font:inherit;font-size:12px;font-weight:800;padding:8px 6px;border-radius:7px;cursor:pointer;min-width:50px}
   .pctgrid button:hover{filter:brightness(1.4)}
@@ -1595,24 +1597,64 @@ function activeMsBetween(from, to){
   return total;
 }
 
+// walk forward from a moment until enough *active* time has passed, skipping curfew
+function whenActiveReached(start, neededMs){
+  let cur = start, left = neededMs;
+  for(let guard = 0; guard < 400 && left > 0; guard++){
+    const d = new Date(cur); d.setUTCHours(0,0,0,0);
+    const dayStart = d.getTime();
+    const winStart = dayStart + CURFEW_END * 3600000;
+    const winEnd   = dayStart + CURFEW_START * 3600000;
+    if(cur < winStart) cur = winStart;
+    if(cur >= winEnd){ cur = dayStart + 86400000 + CURFEW_END * 3600000; continue; }
+    const avail = winEnd - cur;
+    if(left <= avail) return cur + left;
+    left -= avail;
+    cur = dayStart + 86400000 + CURFEW_END * 3600000;
+  }
+  return null;
+}
+
+// how long until this channel ticks up another 10%
+function nextTick(c){
+  const proj = projectedPct(c);
+  if(proj === null) return null;
+  if(proj >= 100) return { max:true };
+  const anchor = anchorOf(c);
+  if(!anchor) return null;
+  const done = activeMsBetween(anchor, Date.now());
+  const needed = (Math.floor(done / 3600000) + 1) * 3600000 - done;
+  const at = whenActiveReached(Date.now(), needed);
+  if(!at) return null;
+  return { at, in: at - Date.now(), frozen: inCurfew() };
+}
+
+// short form for a countdown: 35m, 2h 10m
+function until(ms){
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if(mins < 60) return mins + "m";
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? h + "h " + m + "m" : h + "h";
+}
+
+// the moment the clock started: whichever reading is more recent
+function anchorOf(c){
+  const left = c.emptiedAt || 0, set = c.pctAt || 0;
+  const a = Math.max(left, set);
+  return a || null;
+}
+
 // what a channel is probably sitting at right now
 function projectedPct(c){
   if(!c || c.entries.length) return null;          // someone's on it, they can see the real number
 
-  const left = c.emptiedAt || 0;
-  const set  = c.pctAt || 0;
-  if(!left && !set) return null;                   // nothing to measure from
-
-  // start from the later of the two, and pay the leave penalty if that's the one
-  let start = c.pct;
-  let anchor = set;
-  if(left >= set){
-    anchor = left;
-    start = c.pct - LEAVE_LOSS;
-  }
-
-  const hours = activeMsBetween(anchor, Date.now()) / 3600000;
-  return Math.max(0, Math.min(100, Math.round(start + HOURLY_GAIN * hours)));
+  const anchor = anchorOf(c);
+  if(!anchor) return null;                         // nothing to measure from
+  const left = c.emptiedAt || 0, set = c.pctAt || 0;
+  const start = (left >= set) ? c.pct - LEAVE_LOSS : c.pct;   // leave penalty, if that's the anchor
+  // it steps up on the hour, it doesn't creep — 80% holds at 80% until the tick
+  const hours = Math.floor(activeMsBetween(anchor, Date.now()) / 3600000);
+  return Math.max(0, Math.min(100, start + HOURLY_GAIN * hours));
 }
 
 // true while the clock is inside the freeze window
@@ -1795,19 +1837,27 @@ function openNextMenu(anchor, fromIdx){
       if(c.proj !== null) pct.title = "confirmed " + c.shown + "%, projected " + c.proj + "%";
       row.appendChild(pct);
 
-      // how far it has drifted from the last confirmed reading
-      const drift = document.createElement("span");
-      drift.className = "n-drift";
-      if(c.proj === null){
-        drift.textContent = "+0";
-        drift.classList.add("flat");
+      // when the next 10% is due, rather than a bare number
+      const tick = document.createElement("span");
+      tick.className = "n-tick";
+      const t = nextTick(board[c.idx]);
+      if(!t){
+        tick.textContent = "—";
+        tick.classList.add("flat");
+        tick.title = "no reading to project from";
+      } else if(t.max){
+        tick.textContent = "max";
+        tick.classList.add("flat");
+        tick.title = "already projected at 100%";
+      } else if(t.frozen){
+        tick.textContent = "frozen";
+        tick.classList.add("frozen");
+        tick.title = "curfew — resumes 08:00 UTC, then +10% after " + until(t.in);
       } else {
-        const d = c.proj - c.shown;
-        drift.textContent = (d > 0 ? "+" : "") + d;
-        if(d === 0) drift.classList.add("flat");
-        else if(d < 0) drift.classList.add("down");
+        tick.textContent = "+10% " + until(t.in);
+        tick.title = "next 10% around " + new Date(t.at).toISOString().slice(11,16) + " UTC";
       }
-      row.appendChild(drift);
+      row.appendChild(tick);
 
       if(c.soon){
         const tag = document.createElement("span");
@@ -2386,6 +2436,11 @@ function openPctMenu(anchor, ci){
   h.textContent = "BURNING %";
   m.appendChild(h);
 
+  const hint = document.createElement("div");
+  hint.className = "pcthint";
+  hint.textContent = "tap the same number to re-confirm it";
+  m.appendChild(hint);
+
   const g = document.createElement("div");
   g.className = "pctgrid";
   for(let v=0; v<=100; v+=10){
@@ -2393,8 +2448,18 @@ function openPctMenu(anchor, ci){
     b.textContent = v + "%";
     const col = pctColor(v);
     b.style.color = col; b.style.background = col+"20"; b.style.border = "1px solid "+col+"59";
-    if(v === board[ci].pct) b.setAttribute("aria-current","true");
-    b.onclick = () => { closeMenu(); send({type:"pct",ch:ci,pct:v}) };
+    const current = v === board[ci].pct;
+    if(current){
+      b.setAttribute("aria-current","true");
+      b.title = "Still " + v + "% — click to confirm and restart the clock";
+    }
+    b.onclick = () => {
+      closeMenu();
+      send({type:"pct",ch:ci,pct:v});
+      toast(current
+        ? chLabel(ci) + " confirmed still " + v + "%"
+        : chLabel(ci) + " set to " + v + "%");
+    };
     g.appendChild(b);
   }
   m.appendChild(g);
