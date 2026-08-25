@@ -283,43 +283,65 @@
   }
   .ch:hover{border-color:#243546}
   .ch.occupied{border-color:rgba(34,211,238,.5);box-shadow:0 0 26px rgba(34,211,238,.09)}
-  /* fire around the whole border */
+  /* fire along each edge — one continuous run per side, no tiled squares */
+  .fire-edge{position:absolute;z-index:0;pointer-events:none;overflow:hidden}
+  .fire-edge i{
+    position:absolute;display:block;
+    background-image:url("/img/fire.gif");
+    background-repeat:repeat-x;
+    background-position:50% 100%;
+    background-size:auto 100%;
+    mix-blend-mode:screen;
+    opacity:.92;
+  }
+  /* top and bottom run left to right */
+  .fire-edge.top,.fire-edge.bot{left:0;right:0;height:34px}
+  .fire-edge.bot{bottom:0}
+  .fire-edge.top{top:0;transform:scaleY(-1)}
+  .fire-edge.top i,.fire-edge.bot i{left:0;right:0;bottom:0;height:100%}
+  /* sides are the same strip stood on end */
+  .fire-edge.left,.fire-edge.right{top:0;bottom:0;width:34px}
+  .fire-edge.left{left:0}
+  .fire-edge.right{right:0;transform:scaleX(-1)}
+  .fire-edge.left i,.fire-edge.right i{
+    top:0;left:0;height:34px;width:1400px;
+    transform-origin:0 0;transform:translateX(34px) rotate(90deg);
+  }
+  /* soften where the runs meet at the corners */
+  .fire-edge.top,.fire-edge.bot{
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+  }
+  .fire-edge.left,.fire-edge.right{
+    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 9%,#000 91%,transparent 100%);
+    mask-image:linear-gradient(180deg,transparent 0,#000 9%,#000 91%,transparent 100%);
+  }
+  /* no gif on disk? fall back to a flowing gradient ring */
   .firering{
-    position:absolute;inset:0;z-index:0;pointer-events:none;
-    border-radius:inherit;
-    padding:13px;                       /* ring thickness */
+    position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;padding:12px;
     background:repeating-linear-gradient(112deg,
       #f97316 0 18%, #ef4444 30%, #fbbf24 46%, #f97316 62%, #ea580c 78%, #f97316 100%);
     background-size:280% 100%;
     animation:ringFlow 5.5s linear infinite, ringPulse 2.6s ease-in-out infinite;
-    /* keep only the border, punch the middle out */
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite:xor;
     mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite:exclude;
     filter:blur(.4px);
   }
-  @keyframes ringFlow{
-    from{background-position:0 50%}
-    to  {background-position:280% 50%}
+  @keyframes ringFlow{from{background-position:0 50%}to{background-position:280% 50%}}
+  @keyframes ringPulse{0%,100%{opacity:.82}50%{opacity:1}}
+  .has-fire-img .firering{display:none}          /* gif wins */
+  .fire-edge{display:none}
+  .has-fire-img .fire-edge{display:block}
+  @media(max-width:700px){
+    .fire-edge.top,.fire-edge.bot{height:24px}
+    .fire-edge.left,.fire-edge.right{width:24px}
+    .fire-edge.left i,.fire-edge.right i{height:24px;transform:translateX(24px) rotate(90deg)}
+    .firering{padding:8px}
   }
-  @keyframes ringPulse{
-    0%,100%{opacity:.82}
-    50%    {opacity:1}
-  }
-  /* with the gif in place, the ring becomes real flames */
-  .has-fire-img .firering{
-    background-image:url("/img/fire.gif");
-    background-repeat:repeat;
-    background-size:104px 46px;
-    mix-blend-mode:screen;
-    animation:ringPulse 3s ease-in-out infinite;
-    filter:none;
-    opacity:.95;
-  }
-  @media(max-width:700px){.firering{padding:9px}}
-  .many-fires .firering{padding:9px;opacity:.72}
-  @media(prefers-reduced-motion:reduce){.firering{animation:none}}
+  .many-fires .fire-edge i{opacity:.7}
+  .many-fires .firering{padding:8px;opacity:.72}
 
   /* ---------- a full channel is on fire ---------- */
   .ch.full{
@@ -327,7 +349,7 @@
     border-color:rgba(249,115,22,.75);
     animation:fireGlow 2.4s ease-in-out infinite;
   }
-  .ch.full > *:not(.firering){position:relative;z-index:1}
+  .ch.full > *:not(.firering):not(.fire-edge){position:relative;z-index:1}
   @keyframes fireGlow{
     0%,100%{box-shadow:0 0 16px -4px rgba(249,115,22,.5), inset 0 0 22px -14px rgba(239,68,68,.8)}
     45%    {box-shadow:0 0 32px 0 rgba(249,115,22,.7),  inset 0 0 28px -12px rgba(239,68,68,.9)}
@@ -1992,6 +2014,12 @@ function card(c,i){
     const ring = document.createElement("div");
     ring.className = "firering";
     el.appendChild(ring);
+    ["bot","top","left","right"].forEach(side => {
+      const edge = document.createElement("div");
+      edge.className = "fire-edge " + side;
+      edge.appendChild(document.createElement("i"));
+      el.appendChild(edge);
+    });
   }
 
   el.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect="move"; el.classList.add("drop") };
