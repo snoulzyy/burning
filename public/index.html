@@ -334,34 +334,25 @@
   }
   .ch:hover{border-color:#243546}
   .ch.occupied{border-color:rgba(34,211,238,.5);box-shadow:0 0 26px rgba(34,211,238,.09)}
-  /* no gif on disk? fall back to a flowing gradient ring */
-  .firering{
-    position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;padding:12px;
-    background:linear-gradient(112deg,#f97316,#ef4444 28%,#fbbf24 52%,#f97316 74%,#ea580c);
-    animation:ringPulse 2.8s ease-in-out infinite;
-    will-change:opacity;
-    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite:xor;
-    mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite:exclude;
-  }
-  @keyframes ringPulse{0%,100%{opacity:.82}50%{opacity:1}}
-  @media(max-width:700px){.firering{padding:8px}}
-  .many-fires .firering{padding:8px;opacity:.72}
+  .ch.flash{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(34,211,238,.5)}
 
-  /* ---------- a full channel is on fire ---------- */
-  .ch.full{
-    position:relative;overflow:hidden;
-    border-color:rgba(249,115,22,.75);
-    box-shadow:0 0 22px -6px rgba(249,115,22,.6);
+/* ---------------- board ---------------- */
+  .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+  @media(max-width:1180px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  @media(max-width:940px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
+  @media(max-width:360px){.grid{grid-template-columns:1fr}}
+
+  .ch{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:10px;min-height:92px;
+    display:flex;flex-direction:column;
+    transition:border-color .16s,box-shadow .16s,transform .16s;
   }
-  .ch.full > *:not(.firering){position:relative;z-index:1}
-  .ch.full .ch-head{background:transparent;border-bottom-color:transparent}
-  .ch.full .count.full{color:#fdba74;text-shadow:0 0 8px rgba(249,115,22,.8);animation:countFlare 1.7s ease-in-out infinite}
-  @keyframes countFlare{0%,100%{opacity:.85}50%{opacity:1}}
-  @media(prefers-reduced-motion:reduce){
-    .ch.full .count.full,.firering{animation:none}
-  }
+  .ch:hover{border-color:#243546}
+  .ch.occupied{border-color:rgba(34,211,238,.5);box-shadow:0 0 26px rgba(34,211,238,.09)}
+  .ch.full{border-color:rgba(239,68,68,.6);box-shadow:0 0 26px rgba(239,68,68,.10)}
+  .ch.full .ch-head{background:rgba(239,68,68,.06)}
   .ch.drop{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan);transform:translateY(-2px)}
   .ch.dragging{opacity:.35}
 
@@ -2114,9 +2105,6 @@ function render(){
   closeMenu();
   grid.innerHTML = "";
   board.forEach((c,i) => grid.appendChild(card(c,i)));
-  const fullCount = board.filter(c => c.entries.length >= CAP).length;
-  document.documentElement.classList.toggle("many-fires", fullCount > 10);
-
   const occ = board.filter(c=>c.entries.length).length;
   const ppl = board.reduce((n,c)=>n+c.entries.length,0);
   const full = board.filter(c=>c.entries.length>=CAP).length;
@@ -2271,12 +2259,6 @@ function card(c,i){
     else send({type:"moveUser", from:picked.ch, to:i, id:picked.id});
     picked = null;
   };
-
-  if(c.entries.length >= CAP){
-    const ring = document.createElement("div");
-    ring.className = "firering";
-    el.appendChild(ring);
-  }
 
   el.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect="move"; el.classList.add("drop") };
   el.ondragleave = () => el.classList.remove("drop");
