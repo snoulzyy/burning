@@ -255,22 +255,23 @@
     background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.28);
   }
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
-  .movebtn{
-    width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
-    border-radius:5px;border:1px solid rgba(167,139,250,.5);
-    background:linear-gradient(140deg,rgba(167,139,250,.20),rgba(236,72,153,.16));
+  .movebar{
+    display:grid;place-items:center;
+    width:calc(100% - 16px);margin:0 8px 9px;height:26px;padding:0;
+    border-radius:7px;border:1px solid rgba(167,139,250,.5);
+    background:linear-gradient(140deg,rgba(167,139,250,.18),rgba(236,72,153,.14));
     color:#c4b5fd;cursor:pointer;line-height:0;transition:.15s;
-    box-shadow:0 0 8px -3px rgba(167,139,250,.9);
+    box-shadow:0 0 10px -4px rgba(167,139,250,.9);
   }
-  .movebtn:hover{
+  .movebar:hover{
     color:#e9d5ff;border-color:#a78bfa;
-    background:linear-gradient(140deg,rgba(167,139,250,.38),rgba(236,72,153,.30));
-    box-shadow:0 0 12px -2px rgba(167,139,250,1);
+    background:linear-gradient(140deg,rgba(167,139,250,.34),rgba(236,72,153,.26));
+    box-shadow:0 0 14px -2px rgba(167,139,250,1);
   }
-  .movebtn svg{width:12px;height:12px;display:block}
+  .movebar svg{width:13px;height:13px;display:block}
   .mvpbtn{
-    flex:none;padding:2px 6px;border-radius:5px;cursor:pointer;
-    font:inherit;font-size:9.5px;font-weight:800;letter-spacing:.09em;line-height:1.5;
+    flex:none;margin-right:10px;padding:8px 15px;border-radius:9px;cursor:pointer;
+    font:inherit;font-size:11.5px;font-weight:800;letter-spacing:.14em;line-height:1.2;
     color:#fecdd3;border:1px solid rgba(244,63,94,.55);
     background:linear-gradient(140deg,rgba(244,63,94,.24),rgba(249,115,22,.18));
     box-shadow:0 0 8px -3px rgba(244,63,94,.9);
@@ -517,7 +518,7 @@
   .del{border-color:rgba(239,68,68,.3);color:var(--red)}
   .del:hover{background:rgba(239,68,68,.14);border-color:var(--red)}
 
-  .rows{padding:7px 8px 9px;display:flex;flex-direction:column;gap:5px}
+  .rows{padding:7px 8px 8px;display:flex;flex-direction:column;gap:5px}
   .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:#0c141d}
   .row:hover{background:rgba(255,255,255,.055)}
   .row.tinted,.chip.tinted{
@@ -763,6 +764,7 @@
     </div>
     <span class="sticker-row" id="stickHead"></span>
     <div class="spacer"></div>
+    <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
     <nav class="tabs" id="tabs"></nav>
   </header>
@@ -1260,9 +1262,10 @@ const HELP_HTML = `
      It applies to everyone on that channel at once.</p>
 
   <h5>MVP CALL</h5>
-  <p>Hit the red <span class="k">MVP</span> button on a channel and everyone whose name
-     is on that channel gets an alarm — sound, popup, flashing tab. Nobody else hears
-     a thing, so it won't bother people grinding elsewhere.</p>
+  <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
+     sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
+  <p>Anyone not on a channel hears nothing, so people who are just watching the board
+     don't get bothered.</p>
 
   <h5>40 MINUTE ALERT</h5>
   <p>On RD1, RD2 and RD4 only: when someone on a channel hits 40 minutes, everyone
@@ -1502,29 +1505,37 @@ socket.on("roster", obj => {
   renderLog();
 });
 
-socket.on("mvp", m => {
-  if(!m) return;
-  const r = m.region || region;
-  const c = (boards[r] || [])[m.ch];
-  if(!c) return;
-  const label = r + " " + chLabel(m.ch);
+// where am I right now, if anywhere? checks every board, not just the visible one
+function myChannel(){
+  for(const r of Object.keys(boards)){
+    const chans = boards[r] || [];
+    for(let i = 0; i < chans.length; i++){
+      if(onThisChannel(chans[i])) return r + " " + chLabel(i);
+    }
+  }
+  return null;
+}
 
-  // not your channel? stay quiet — this is for whoever is grinding it
-  if(!onThisChannel(c)){
-    if(m.by === me) toast("MVP call sent to " + label);
+socket.on("mvp", m => {
+  const by = (m && m.by) || "someone";
+  const where = myChannel();
+
+  // not on a channel? you're not grinding, so no alarm for you
+  if(!where){
+    if(by === me) toast("MVP called — anyone on a channel just got it");
     return;
   }
   mvpAlarm();
-  flashTitle("MVP " + label);
+  flashTitle("MVP — " + where);
   try {
     if(window.Notification && Notification.permission === "granted"){
-      const n = new Notification("MVP — " + label, {
-        body: (m.by || "someone") + " called it", requireInteraction: true
+      const n = new Notification("MVP", {
+        body: by + " called it — you're on " + where, requireInteraction: true
       });
       n.onclick = () => { window.focus(); stopFlash(); n.close(); };
     }
   } catch(e){}
-  toast("MVP on " + label + " — called by " + (m.by || "someone"));
+  toast("MVP called by " + by + " — you're on " + where);
 });
 
 socket.on("chatlog", arr => {
@@ -2180,29 +2191,6 @@ function card(c,i){
     head.appendChild(dur);
   }
 
-  if(c.entries.length){
-    const mvp = document.createElement("button");
-    mvp.className = "mvpbtn";
-    mvp.textContent = "MVP";
-    mvp.title = "Sound the alarm for everyone on " + chLabel(i);
-    mvp.onclick = e => {
-      e.stopPropagation();
-      socket.emit("mvp", { region, ch:i, by:me });
-      mvp.classList.add("fired");
-      setTimeout(() => mvp.classList.remove("fired"), 900);
-    };
-    head.appendChild(mvp);
-  }
-
-  if(c.entries.length){
-    const mv = document.createElement("button");
-    mv.className = "movebtn";
-    mv.innerHTML = chevron("right");
-    mv.title = "Move this channel somewhere better";
-    mv.onclick = e => { e.stopPropagation(); openNextMenu(mv, i); };
-    head.appendChild(mv);
-  }
-
   if(c.pctAt){
     const t = document.createElement("span");
     t.className = "ago"; t.dataset.at = c.pctAt;
@@ -2236,6 +2224,15 @@ function card(c,i){
     c.entries.forEach(en => rows.appendChild(row(en,i)));
     if(picked && picked.group && picked.ch === i) rows.querySelectorAll(".row").forEach(r => r.classList.add("picked"));
     el.appendChild(rows);
+  }
+
+  if(c.entries.length){
+    const mv = document.createElement("button");
+    mv.className = "movebar";
+    mv.innerHTML = chevron("right");
+    mv.title = "Projected burns — where this channel could go next";
+    mv.onclick = e => { e.stopPropagation(); openNextMenu(mv, i); };
+    el.appendChild(mv);
   }
 
   if(editing && editing.ch===i && editing.id==="new"){
@@ -2523,6 +2520,14 @@ whoBtn.onclick = () => {
       if(window.Notification && Notification.permission === "default") Notification.requestPermission();
     } catch(e){}
   }
+};
+
+const mvpBtn = document.getElementById("mvpBtn");
+mvpBtn.onclick = () => {
+  primeAudio();
+  socket.emit("mvp", { by: me });
+  mvpBtn.classList.add("fired");
+  setTimeout(() => mvpBtn.classList.remove("fired"), 900);
 };
 
 const soundBtn = document.getElementById("soundBtn");

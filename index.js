@@ -389,26 +389,18 @@ io.on("connection", socket => {
     broadcast(region);
   });
 
-  // "MVP is up" — only people sitting on that channel are meant to hear it
+  // "MVP is up" — one shout that reaches anyone currently on a channel, any board
   let lastMvp = 0;
   socket.on("mvp", m => {
-    if (!m || !viewing) return;
-    const region = (clean(m.region, 12).toUpperCase() || viewing);
-    const r = byId(region);
-    if (!r || !r.enabled) return;
-    const at = Number(m.ch);
-    const target = state[region].channels[at];
-    if (!target || !target.entries.length) return;
+    if (!viewing) return;
     const now = Date.now();
     if (now - lastMvp < 5000) return;              // no spamming the button
     lastMvp = now;
-    const by = clean(m.by, 24) || "someone";
-    note(region, `MVP called on ${ch(at)} by ${by}`);
+    const by = clean(m && m.by, 24) || "someone";
+    note(viewing, `MVP called by ${by}`);
     persist();
-    broadcast(region);
-    // goes to everyone connected — whoever is on that channel decides to sound it,
-    // regardless of which board they happen to be looking at
-    io.emit("mvp", { region, ch: at, by, t: now });
+    broadcast(viewing);
+    io.emit("mvp", { by, t: now });
   });
 
   socket.on("chat", m => {
