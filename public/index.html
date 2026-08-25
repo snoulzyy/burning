@@ -123,13 +123,15 @@
   .bench-hint{font-size:10.5px;color:var(--dim)}
   .bench-add{margin-left:auto;font-size:11px;padding:5px 11px}
   .bench-body{
-    display:flex;flex-wrap:nowrap;gap:7px;padding:11px 13px;
-    overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+    display:flex;flex-wrap:wrap;align-content:flex-start;gap:7px;padding:11px 13px;
+    /* two rows of names, then it scrolls down instead of sideways */
+    max-height:82px;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;
   }
-  .bench-body::-webkit-scrollbar{height:7px}
+  .bench-body::-webkit-scrollbar{width:7px}
   .bench-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .bench-body::-webkit-scrollbar-track{background:transparent}
   .chip{flex:none}
+  @media(max-width:700px){.bench-body{max-height:76px;padding:9px 10px}}
   .bench-empty{font-size:11.5px;color:var(--dim);padding:2px 0}
 
   .chip{
@@ -143,6 +145,7 @@
   .chip.placed{opacity:.45;cursor:default}
   .chip.placed .where{font-size:10px;color:var(--amber);letter-spacing:.04em}
   .chip.mine{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
+  .chip.mine.tinted{box-shadow:0 0 0 1px rgba(255,255,255,.35), 0 0 14px -2px var(--glow)}
   .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
   .chip-btn{
     width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
@@ -353,10 +356,41 @@
   .rows{padding:7px 8px 9px;display:flex;flex-direction:column;gap:5px}
   .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.03)}
   .row:hover{background:rgba(255,255,255,.055)}
-  .row.tinted{border:1px solid transparent}
+  .row.tinted,.chip.tinted{
+    position:relative;overflow:hidden;border:1px solid transparent;
+    background-image:linear-gradient(100deg,var(--c3) 0%,var(--c) 32%,var(--c2) 50%,var(--c) 68%,var(--c3) 100%);
+    background-size:260% 100%;
+    animation:auraDrift 7s ease-in-out infinite, auraGlow 3.6s ease-in-out infinite;
+  }
+  @keyframes auraDrift{
+    0%  {background-position:0% 50%}
+    50% {background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
+  @keyframes auraGlow{
+    0%,100%{box-shadow:0 0 10px -2px var(--glow)}
+    50%    {box-shadow:0 0 20px 1px var(--glow)}
+  }
+  /* a highlight that slides across every few seconds */
+  .row.tinted::after,.chip.tinted::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(104deg,transparent 38%,rgba(255,255,255,.26) 50%,transparent 62%);
+    transform:translate3d(-130%,0,0);
+    animation:auraSheen 5.5s ease-in-out infinite;
+  }
+  @keyframes auraSheen{
+    0%  {transform:translate3d(-130%,0,0)}
+    55% {transform:translate3d(130%,0,0)}
+    100%{transform:translate3d(130%,0,0)}
+  }
+  .row.tinted > *,.chip.tinted > *{position:relative;z-index:1}
   .row.tinted:hover{filter:brightness(1.08)}
   .row.tinted .who{font-weight:700}
   .row.tinted .icon:hover{background:rgba(255,255,255,.18)}
+  @media(prefers-reduced-motion:reduce){
+    .row.tinted,.chip.tinted{animation:none;background-image:linear-gradient(100deg,var(--c),var(--c))}
+    .row.tinted::after,.chip.tinted::after{animation:none;opacity:0}
+  }
   .row.dragging{opacity:.3}
   .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-family:var(--name-face);font-weight:600;font-size:13.5px;letter-spacing:.005em;cursor:grab}
@@ -634,6 +668,16 @@ function luminance(hex){
 }
 // black on light colours, near-white on dark ones — always legible
 const inkOn = hex => luminance(hex) > .42 ? "#0a1119" : "#f2f8fd";
+// nudge a colour toward white (t>0) or black (t<0)
+function mixHex(hex, t){
+  const c = hexRGB(hex);
+  if(!c) return hex;
+  const target = t >= 0 ? 255 : 0;
+  const k = Math.abs(t);
+  const m = v => Math.round(v + (target - v) * k);
+  return "#" + [m(c.r), m(c.g), m(c.b)].map(v => v.toString(16).padStart(2,"0")).join("");
+}
+
 function rgba(hex, a){
   const c = hexRGB(hex);
   return c ? `rgba(${c.r},${c.g},${c.b},${a})` : "transparent";
@@ -1562,7 +1606,11 @@ function renderBench(){
     nm.className = "nm";
     nm.textContent = p.name;
     if(p.color){
-      chip.style.background = rgba(p.color, .88);
+      chip.classList.add("tinted");
+      chip.style.setProperty("--c",    rgba(p.color, .92));
+      chip.style.setProperty("--c2",   rgba(mixHex(p.color, .28), .95));
+      chip.style.setProperty("--c3",   rgba(mixHex(p.color, -.18), .92));
+      chip.style.setProperty("--glow", rgba(p.color, .45));
       chip.style.borderColor = rgba(p.color, .95);
       nm.style.color = inkOn(p.color);
       nm.style.fontWeight = "700";
@@ -1573,6 +1621,7 @@ function renderBench(){
       const w = document.createElement("span");
       w.className = "where";
       w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
+      if(p.color){ w.style.color = inkOn(p.color); w.style.opacity = ".75" }
       chip.appendChild(w);
     } else {
       chip.draggable = true;
@@ -1596,11 +1645,24 @@ function renderBench(){
       const tag = document.createElement("span");
       tag.className = "claimtag" + (mine ? " me" : "");
       tag.textContent = mine ? "you" : (p.claimedName || "claimed");
+      if(p.color){
+        // sit it on the same ink as the name, just a shade softer
+        const ink = inkOn(p.color);
+        tag.style.color = ink;
+        tag.style.opacity = ".8";
+        tag.style.background = ink === "#0a1119" ? "rgba(255,255,255,.28)" : "rgba(0,0,0,.26)";
+        tag.style.padding = "1px 5px";
+        tag.style.borderRadius = "4px";
+      }
       chip.appendChild(tag);
     }
 
+    const btnInk = p.color ? inkOn(p.color) : null;
+    const btnEdge = btnInk === "#0a1119" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.5)";
+
     const dot = document.createElement("button");
     dot.className = "chip-btn swatch";
+    if(btnInk) dot.style.borderColor = btnEdge;
     dot.style.background = p.color || "#44586c";
     dot.title = "Pick a colour for " + p.name;
     dot.onclick = ev => { ev.stopPropagation(); openColorMenu(dot, p); };
@@ -1609,6 +1671,11 @@ function renderBench(){
     const claim = document.createElement("button");
     claim.className = "chip-btn claim" + (mine ? " on" : "") + (takenBySomeoneElse ? " locked" : "");
     claim.innerHTML = takenBySomeoneElse ? lockSVG() : personSVG();
+    if(btnInk){
+      claim.style.color = btnInk;
+      claim.style.opacity = takenBySomeoneElse ? ".65" : "1";
+      claim.style.borderColor = "transparent";
+    }
     claim.title = mine
       ? "This is you — click to release it"
       : takenBySomeoneElse
@@ -1637,6 +1704,7 @@ function renderBench(){
       const del = document.createElement("button");
       del.className = "chip-btn drop-btn";
       del.innerHTML = crossSVG();
+      if(btnInk){ del.style.color = btnInk; del.style.opacity = ".8"; }
       del.title = "Remove " + p.name + " from the list";
       del.onclick = ev => {
         ev.stopPropagation();
@@ -1851,9 +1919,12 @@ function row(en,ci){
   const ink = col ? inkOn(col) : null;
   if(col){
     r.classList.add("tinted");
-    r.style.background = rgba(col, .88);
+    r.style.setProperty("--c",    rgba(col, .92));
+    r.style.setProperty("--c2",   rgba(mixHex(col, .28), .95));
+    r.style.setProperty("--c3",   rgba(mixHex(col, -.18), .92));
+    r.style.setProperty("--glow", rgba(col, .55));
+    r.style.setProperty("--ink",  ink);
     r.style.borderColor = rgba(col, .95);
-    r.style.setProperty("--ink", ink);
   }
 
   if(editing && editing.ch===ci && editing.id===en.id){
