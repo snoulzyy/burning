@@ -265,6 +265,15 @@ io.on("connection", socket => {
           + (left ? ` — ${left} stayed on ${A}, ${B} is full` : ""));
         break;
       }
+      case "duration": {
+        if (!target || !target.entries.length) return;
+        const mins = Math.max(0, Math.min(180, Math.round(Number(a.minutes))));
+        if (!isFinite(mins)) return;
+        const base = Date.now() - mins * 60000;
+        target.entries.forEach(e => { e.at = base; });     // one clock for the whole channel
+        note(region, `${ch(at)} set to ${mins}m by ${by}`);
+        break;
+      }
       case "person-add": {
         const area = areaOf(region);
         const list = state.rosters[area];
