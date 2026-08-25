@@ -283,6 +283,58 @@
   }
   .ch:hover{border-color:#243546}
   .ch.occupied{border-color:rgba(34,211,238,.5);box-shadow:0 0 26px rgba(34,211,238,.09)}
+  /* real flame shapes tiled along the bottom edge */
+  .flames{
+    position:absolute;left:-6%;right:-6%;bottom:-2px;height:46px;z-index:0;pointer-events:none;
+    background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 48' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='1' x2='0' y2='0'><stop offset='0' stop-color='%23f97316' stop-opacity='.95'/><stop offset='.4' stop-color='%23fb923c' stop-opacity='.78'/><stop offset='.75' stop-color='%23fcd34d' stop-opacity='.4'/><stop offset='1' stop-color='%23fde68a' stop-opacity='0'/></linearGradient></defs><path fill='url(%23g)' d='M2 48 C3.8 34 4.7 23.2 7.7 15.2 C8.7 11.2 9 9 9 8 C9 9 9.7 12 11.1 16.8 C13.9 26 14.6 36 16 48 Z'/><path fill='url(%23g)' d='M12.5 48 C14.6 31.6 15.7 18.9 19.5 9.5 C20.6 4.8 21 2 21 1 C21 2 21.9 5.7 23.6 11.3 C26.9 22.1 27.8 33.9 29.5 48 Z'/><path fill='url(%23g)' d='M26 48 C27.5 37.1 28.3 28.8 30.9 22.6 C31.7 19.5 32 18 32 17 C32 18 32.6 20.1 33.8 23.8 C36.2 30.9 36.8 38.7 38 48 Z'/></svg>");
+    background-repeat:repeat-x;background-size:40px 46px;background-position:0 100%;
+    animation:flameRise 1.15s steps(4) infinite, flameDrift 9s linear infinite;
+    transform-origin:50% 100%;
+    filter:drop-shadow(0 -3px 7px rgba(249,115,22,.5));
+  }
+  .flames.tips{
+    height:32px;
+    background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 34' preserveAspectRatio='none'><defs><linearGradient id='h' x1='0' y1='1' x2='0' y2='0'><stop offset='0' stop-color='%23fbbf24' stop-opacity='.9'/><stop offset='.5' stop-color='%23fcd34d' stop-opacity='.5'/><stop offset='1' stop-color='%23fef3c7' stop-opacity='0'/></linearGradient></defs><path fill='url(%23h)' d='M2 34 C3.4 24 4.2 16.5 6.6 11 C7.4 8 8 6 8 5 C8 6 8.6 8.4 9.8 11.8 C11.9 17.6 12.6 25 14 34 Z'/><path fill='url(%23h)' d='M15 34 C16.4 26 17 20 19 15.5 C19.7 13 20 11.5 20 10.5 C20 11.5 20.5 13.4 21.5 16.2 C23.2 21 23.7 27 25 34 Z'/></svg>");
+    background-size:26px 32px;
+    animation:flameRise 0.83s steps(3) infinite reverse, flameDrift 6s linear infinite reverse;
+    opacity:.85;
+  }
+  /* squash and stretch, so the tongues lick rather than slide */
+  @keyframes flameRise{
+    0%  {transform:scaleY(1)    scaleX(1)}
+    25% {transform:scaleY(1.16) scaleX(.97)}
+    50% {transform:scaleY(.94)  scaleX(1.04)}
+    75% {transform:scaleY(1.22) scaleX(.98)}
+    100%{transform:scaleY(1)    scaleX(1)}
+  }
+  @keyframes flameDrift{
+    from{background-position:0 100%}
+    to  {background-position:120px 100%}
+  }
+  /* public/img/fire.gif takes over when it exists */
+  .has-fire-img .flames{
+    left:0;right:0;bottom:0;height:40px;
+    background-image:url("/img/fire.gif");
+    background-repeat:repeat-x;
+    background-position:50% 100%;
+    background-size:104px 100%;      /* tiled to the strip, never the whole card */
+    /* the gif has a black backdrop — screen drops it out over the dark panel */
+    mix-blend-mode:screen;
+    opacity:.92;
+    filter:none;
+    animation:none;                  /* the gif animates itself */
+    contain:paint;
+    /* fade the top edge so it melts into the card instead of cutting off */
+    -webkit-mask-image:linear-gradient(to top,#000 38%,rgba(0,0,0,.45) 72%,transparent 100%);
+    mask-image:linear-gradient(to top,#000 38%,rgba(0,0,0,.45) 72%,transparent 100%);
+  }
+  .has-fire-img .flames.tips{display:none}
+  /* lots of channels alight at once — go lighter so nothing chugs */
+  .many-fires .has-fire-img .flames,
+  .has-fire-img.many-fires .flames{opacity:.7;height:32px}
+  .many-fires .ch.full::after{display:none}          /* drop the ember layer */
+  .many-fires .ch.full::before{filter:blur(5px);opacity:.75}
+  @media(prefers-reduced-motion:reduce){ .flames{animation:none} }
   /* ---------- a full channel is on fire ---------- */
   .ch.full{
     position:relative;overflow:hidden;
@@ -1792,6 +1844,9 @@ function render(){
   closeMenu();
   grid.innerHTML = "";
   board.forEach((c,i) => grid.appendChild(card(c,i)));
+  const fullCount = board.filter(c => c.entries.length >= CAP).length;
+  document.documentElement.classList.toggle("many-fires", fullCount > 10);
+
   const occ = board.filter(c=>c.entries.length).length;
   const ppl = board.reduce((n,c)=>n+c.entries.length,0);
   const full = board.filter(c=>c.entries.length>=CAP).length;
@@ -1946,6 +2001,12 @@ function card(c,i){
     else send({type:"moveUser", from:picked.ch, to:i, id:picked.id});
     picked = null;
   };
+
+  if(c.entries.length >= CAP){
+    const f1 = document.createElement("div"); f1.className = "flames";
+    const f2 = document.createElement("div"); f2.className = "flames tips";
+    el.appendChild(f1); el.appendChild(f2);
+  }
 
   el.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect="move"; el.classList.add("drop") };
   el.ondragleave = () => el.classList.remove("drop");
@@ -2252,6 +2313,13 @@ function checkChannelTimers(){
   });
   if(priming) timersPrimed = true;
 }
+
+// if public/img/fire.gif is there, the flame layers switch to it
+(function(){
+  const probe = new Image();
+  probe.onload = () => document.documentElement.classList.add("has-fire-img");
+  probe.src = "/img/fire.gif";
+})();
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
