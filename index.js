@@ -274,6 +274,39 @@ io.on("connection", socket => {
         note(region, `${ch(at)} set to ${mins}m by ${by}`);
         break;
       }
+      case "person-color": {
+        const area = areaOf(region);
+        const p = findPerson(a.id, area);
+        const col = clean(a.color, 12);
+        if (!p || !/^#[0-9a-fA-F]{6}$/.test(col)) return;
+        p.color = col;
+        persist();
+        broadcastRoster();
+        return;
+      }
+      case "claim": {
+        const area = areaOf(region);
+        const p = findPerson(a.pid, area);
+        const token = clean(a.token, 64);
+        if (!p || !token) return;
+        if (p.claimedBy && p.claimedBy !== token) return;   // already someone else's
+        p.claimedBy = token;
+        p.claimedName = clean(a.who, 24) || "someone";
+        persist();
+        broadcastRoster();
+        return;
+      }
+      case "unclaim": {
+        const area = areaOf(region);
+        const p = findPerson(a.pid, area);
+        const token = clean(a.token, 64);
+        if (!p || !token || p.claimedBy !== token) return;   // only the owner can let go
+        p.claimedBy = null;
+        p.claimedName = null;
+        persist();
+        broadcastRoster();
+        return;
+      }
       case "person-add": {
         const area = areaOf(region);
         const list = state.rosters[area];
@@ -282,7 +315,7 @@ io.on("connection", socket => {
         if (name.toLowerCase() === "guest") return;   // guests stay guests
         if (list.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
         if (list.length >= 200) return;
-        list.push({ id: uid(), name });
+        list.push({ id: uid(), name, color: null, claimedBy: null, claimedName: null });
         list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
