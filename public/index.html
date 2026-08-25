@@ -471,24 +471,43 @@
   .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:#0c141d}
   .row:hover{background:rgba(255,255,255,.055)}
   .row.tinted,.chip.tinted{
-    position:relative;overflow:hidden;
+    position:relative;overflow:hidden;border:0;
     background-color:#0c141d;
-    background-image:linear-gradient(180deg,var(--c),var(--c2));
-    border:1px solid var(--edge);
-    box-shadow:0 0 12px -3px var(--glow), inset 0 0 14px -8px var(--glow);
-    animation:auraGlow 3.8s ease-in-out infinite;
+    background-image:linear-gradient(112deg,var(--a1) 0%,var(--a2) 42%,var(--a3) 72%,var(--a1) 100%);
+    background-size:240% 100%;
+    animation:auraShift 9s ease-in-out infinite, auraGlow 4.2s ease-in-out infinite;
+  }
+  @keyframes auraShift{
+    0%,100%{background-position:0% 50%}
+    50%    {background-position:100% 50%}
   }
   @keyframes auraGlow{
-    0%,100%{box-shadow:0 0 10px -4px var(--glow), inset 0 0 12px -9px var(--glow)}
-    50%    {box-shadow:0 0 22px 0 var(--glow), inset 0 0 18px -6px var(--glow)}
+    0%,100%{box-shadow:0 0 10px -4px var(--glow)}
+    50%    {box-shadow:0 0 20px -1px var(--glow)}
   }
-  /* a faint band of their colour travelling along the pill */
+  /* a hairline edge that flows through their three shades */
+  .row.tinted::before,.chip.tinted::before{
+    content:"";position:absolute;inset:0;border-radius:inherit;padding:1.3px;z-index:0;
+    background:linear-gradient(112deg,var(--e1),var(--e2) 38%,var(--e3) 68%,var(--e1));
+    background-size:260% 100%;
+    animation:auraEdge 7s linear infinite;
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude;
+    pointer-events:none;
+  }
+  @keyframes auraEdge{
+    from{background-position:0 50%}
+    to  {background-position:260% 50%}
+  }
+  /* soft light drifting across */
   .row.tinted::after,.chip.tinted::after{
-    content:"";position:absolute;inset:0;pointer-events:none;
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
     background:linear-gradient(104deg,transparent 40%,var(--glow) 50%,transparent 60%);
-    opacity:.22;
+    opacity:.20;
     transform:translate3d(-130%,0,0);
-    animation:auraSheen 6s ease-in-out infinite;
+    animation:auraSheen 6.5s ease-in-out infinite;
   }
   @keyframes auraSheen{
     0%  {transform:translate3d(-130%,0,0)}
@@ -501,6 +520,7 @@
   .row.tinted .icon:hover{background:rgba(255,255,255,.10)}
   @media(prefers-reduced-motion:reduce){
     .row.tinted,.chip.tinted{animation:none}
+    .row.tinted::before,.chip.tinted::before{animation:none}
     .row.tinted::after,.chip.tinted::after{animation:none;opacity:0}
   }
   .row.dragging{opacity:.3}
@@ -780,6 +800,33 @@ function luminance(hex){
 }
 // black on light colours, near-white on dark ones — always legible
 const inkOn = hex => luminance(hex) > .42 ? "#0a1119" : "#f2f8fd";
+function hexHSL(hex){
+  const c = hexRGB(hex);
+  if(!c) return { h:0, s:0, l:.5 };
+  const r = c.r/255, g = c.g/255, b = c.b/255;
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx - mn;
+  let h = 0;
+  if(d){
+    if(mx === r)      h = ((g - b)/d) % 6;
+    else if(mx === g) h = (b - r)/d + 2;
+    else              h = (r - g)/d + 4;
+    h *= 60; if(h < 0) h += 360;
+  }
+  const l = (mx + mn)/2;
+  const sat = d ? d / (1 - Math.abs(2*l - 1)) : 0;
+  return { h, s:sat, l };
+}
+// three neighbouring shades, so the aura has depth instead of one flat colour
+function auraRamp(hex){
+  const { h, s, l } = hexHSL(hex);
+  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  return [
+    hslHex(h - 14, cl(s * .92, .18, .95), cl(l * .72, .14, .70)),
+    hex,
+    hslHex(h + 14, cl(s * .90, .18, .95), cl(l * 1.18, .32, .78))
+  ];
+}
+
 // the colour itself, lifted until it reads against a dark pill
 function glowInk(hex){
   const l = luminance(hex);
@@ -1725,11 +1772,15 @@ function renderBench(){
     nm.textContent = p.name;
     if(p.color){
       const plit = glowInk(p.color);
+      const [pa, pb, pc] = auraRamp(p.color);
       chip.classList.add("tinted");
-      chip.style.setProperty("--c",    rgba(p.color, .16));
-      chip.style.setProperty("--c2",   rgba(p.color, .05));
-      chip.style.setProperty("--edge", rgba(plit, .7));
-      chip.style.setProperty("--glow", rgba(plit, .45));
+      chip.style.setProperty("--a1", rgba(pa, .30));
+      chip.style.setProperty("--a2", rgba(pb, .13));
+      chip.style.setProperty("--a3", rgba(pc, .28));
+      chip.style.setProperty("--e1", rgba(pa, .85));
+      chip.style.setProperty("--e2", rgba(plit, .95));
+      chip.style.setProperty("--e3", rgba(pc, .85));
+      chip.style.setProperty("--glow", rgba(plit, .42));
       nm.style.color = plit;
       nm.style.fontWeight = "700";
     }
@@ -2047,11 +2098,15 @@ function row(en,ci){
   const ink = col ? inkOn(col) : null;
   const lit = col ? glowInk(col) : null;
   if(col){
+    const [a, b, c2] = auraRamp(col);
     r.classList.add("tinted");
-    r.style.setProperty("--c",    rgba(col, .16));
-    r.style.setProperty("--c2",   rgba(col, .05));
-    r.style.setProperty("--edge", rgba(lit, .75));
-    r.style.setProperty("--glow", rgba(lit, .55));
+    r.style.setProperty("--a1", rgba(a, .30));
+    r.style.setProperty("--a2", rgba(b, .13));
+    r.style.setProperty("--a3", rgba(c2, .28));
+    r.style.setProperty("--e1", rgba(a, .9));
+    r.style.setProperty("--e2", rgba(glowInk(b), .95));
+    r.style.setProperty("--e3", rgba(c2, .9));
+    r.style.setProperty("--glow", rgba(lit, .5));
     r.style.setProperty("--ink",  lit);
   }
 
