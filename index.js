@@ -71,6 +71,11 @@ function hydrate(saved) {
   });
   if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
   if (typeof state.mvpMsg !== "string") state.mvpMsg = "";
+  // shared music queue. whatever was mid-song when the server stopped is dropped,
+  // but the queue itself survives
+  if (!state.music || typeof state.music !== "object") state.music = { queue: [], playing: null };
+  if (!Array.isArray(state.music.queue)) state.music.queue = [];
+  state.music.playing = null;
   if (!state.mvpTimer || typeof state.mvpTimer !== "object") state.mvpTimer = null;
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
@@ -157,6 +162,42 @@ function scheduleMvpTimer() {
   }, left);
 }
 
+/* ---------------- music ---------------- */
+function videoIdFrom(raw) {
+  const v = String(raw || "").trim();
+  if (/^[\w-]{11}$/.test(v)) return v;                       // already an id
+  const patterns = [
+    /youtu\.be\/([\w-]{11})/,
+    /[?&]v=([\w-]{11})/,
+    /\/shorts\/([\w-]{11})/,
+    /\/embed\/([\w-]{11})/,
+    /\/live\/([\w-]{11})/
+  ];
+  for (const re of patterns) {
+    const m = v.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function musicView() {
+  return {
+    queue: state.music.queue.map(t => ({
+      id: t.id, videoId: t.videoId, title: t.title, by: t.by, token: t.token
+    })),
+    playing: state.music.playing
+  };
+}
+function broadcastMusic() {
+  io.emit("music", musicView());
+}
+function startNext() {
+  const next = state.music.queue.shift();
+  state.music.playing = next
+    ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by, token: next.token, startedAt: Date.now() }
+    : null;
+}
+
 function broadcastNotice() {
   io.emit("notice", state.notice);
 }
@@ -201,6 +242,7 @@ io.on("connection", socket => {
     socket.emit("notice", state.notice);
     socket.emit("mvpmsg", state.mvpMsg);
     socket.emit("mvptimer", state.mvpTimer);
+    socket.emit("music", musicView());
     presence();
   });
 
@@ -365,6 +407,55 @@ io.on("connection", socket => {
         p.claimedName = null;
         persist();
         broadcastRoster();
+        return;
+      }
+      case "music-add": {
+        const videoId = videoIdFrom(a.url);
+        const token = clean(a.token, 64);
+        if (!videoId || !token) return;
+        if (state.music.queue.length >= 100) return;
+        const item = { id: uid(), videoId, title: "", by, token, at: Date.now() };
+        state.music.queue.push(item);
+        if (!state.music.playing) startNext();
+        note(region, `queued a song`, null);
+        persist();
+        broadcastMusic();
+        broadcast(region);
+        return;
+      }
+      case "music-remove": {
+        const token = clean(a.token, 64);
+        if (!token) return;
+        const cur = state.music.playing;
+        if (cur && cur.id === a.id) {
+          if (cur.token !== token) return;      // only whoever queued it
+          startNext();
+        } else {
+          const i = state.music.queue.findIndex(t => t.id === a.id);
+          if (i === -1) return;
+          if (state.music.queue[i].token !== token) return;
+          state.music.queue.splice(i, 1);
+        }
+        persist();
+        broadcastMusic();
+        return;
+      }
+      case "music-title": {
+        const title = clean(a.title, 120);
+        if (!title) return;
+        if (state.music.playing && state.music.playing.id === a.id) state.music.playing.title = title;
+        const q = state.music.queue.find(t => t.id === a.id);
+        if (q) q.title = title;
+        persist();
+        broadcastMusic();
+        return;
+      }
+      case "music-ended": {
+        // whichever listener finishes first moves it along; the rest are ignored
+        if (!state.music.playing || state.music.playing.id !== a.id) return;
+        startNext();
+        persist();
+        broadcastMusic();
         return;
       }
       case "mvptimer": {

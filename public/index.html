@@ -174,7 +174,8 @@
   .chip{flex:none}
   @media(max-width:700px){
     .bench-body{max-height:76px;padding:9px 10px}
-    .toolbar{justify-content:flex-start;margin:-2px 0 10px}
+    .headright{align-items:stretch;width:100%}
+    .toolbar{justify-content:flex-start}
     .bgrange{width:84px}
   }
   .bench-empty{font-size:11.5px;color:var(--dim);padding:2px 0}
@@ -471,6 +472,78 @@
     box-shadow:0 12px 34px rgba(0,0,0,.7);max-width:calc(100% - 24px);
   }
   .toast.warn{border-color:rgba(239,68,68,.7)}
+  /* ---------------- music drawer ---------------- */
+  .drawer{
+    position:fixed;right:14px;bottom:14px;z-index:100;width:min(330px,calc(100vw - 28px));
+    background:rgba(10,17,25,.97);backdrop-filter:blur(12px);
+    border:1px solid rgba(34,211,238,.35);border-radius:14px;overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.7);
+  }
+  .drawer[hidden]{display:none}
+  .drawer-head{
+    display:flex;align-items:center;gap:8px;padding:10px 12px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .drawer-title{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan)}
+  .listen-btn{margin-left:auto;font-size:10.5px;padding:5px 10px}
+  .listen-btn.on{color:#04202a;background:var(--cyan);border-color:var(--cyan);font-weight:800}
+  .drawer-x{
+    font:inherit;font-size:12px;line-height:1;color:var(--dim);
+    background:none;border:0;cursor:pointer;padding:2px 3px;
+  }
+  .drawer-x:hover{color:var(--text)}
+
+  .now{padding:11px 12px;border-bottom:1px solid var(--line-soft)}
+  .now-label{font-size:9px;letter-spacing:.18em;color:var(--dim);margin-bottom:5px}
+  .now-title{
+    font-family:var(--name-face);font-size:13.5px;font-weight:700;color:var(--text);
+    line-height:1.3;word-break:break-word;
+  }
+  .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
+  .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
+  .yt-holder[hidden]{display:none}
+  .yt-holder iframe{display:block;width:100%;height:170px;border:0}
+  .vol-row{display:flex;align-items:center;gap:8px;margin-top:9px}
+  .vol-row[hidden]{display:none}
+  .vol-ic{font-size:11px;color:var(--dim)}
+  .volrange{width:100%}
+
+  .drawer-add{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
+  .drawer-add input{
+    flex:1;min-width:0;font:inherit;font-size:12px;padding:7px 9px;color:var(--text);
+    background:#04121a;border:1px solid var(--line);border-radius:7px;
+  }
+  .drawer-add input:focus{outline:none;border-color:var(--cyan)}
+  .drawer-add button{font-size:11px;padding:6px 12px}
+
+  .queue{max-height:220px;overflow-y:auto;padding:8px}
+  .queue::-webkit-scrollbar{width:7px}
+  .queue::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
+  .q-empty{padding:10px 6px;font-size:11.5px;color:var(--dim);text-align:center}
+  .q-row{
+    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;
+    background:rgba(255,255,255,.03);margin-bottom:4px;
+  }
+  .q-row:hover{background:rgba(255,255,255,.06)}
+  .q-num{flex:none;font-size:10px;color:var(--dim);min-width:14px}
+  .q-main{flex:1;min-width:0}
+  .q-title{
+    font-family:var(--name-face);font-size:12px;font-weight:600;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .q-by{font-size:9.5px;color:var(--dim)}
+  .q-x{
+    flex:none;width:18px;height:18px;display:grid;place-items:center;padding:0;line-height:0;
+    border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;
+    color:var(--red);cursor:pointer;
+  }
+  .q-x:hover{background:rgba(239,68,68,.15);border-color:var(--red)}
+  .q-x svg{width:10px;height:10px;display:block}
+  @media(max-width:700px){
+    .drawer{right:8px;left:8px;bottom:8px;width:auto}
+    .yt-holder iframe{height:150px}
+  }
+
   /* ---------------- mvp popup ---------------- */
   .mvp-pop{
     position:fixed;inset:0;z-index:120;display:grid;place-items:center;
@@ -713,9 +786,9 @@
   }
   .modal-close:hover{color:var(--text)}
   footer{margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--dim)}
+  .headright{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
   .toolbar{
-    display:flex;align-items:center;justify-content:flex-end;gap:10px;
-    margin:-6px 0 12px;flex-wrap:wrap;
+    display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;
   }
   .bgwrap{display:inline-flex;align-items:center;gap:9px}
   .bgrange{
@@ -864,20 +937,22 @@
     </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
-    <div class="tabsWrap">
-      <nav class="tabs" id="tabs"></nav>
-      <button class="tabsbar" id="tabsBar" title="Choose which tabs to show" aria-label="Choose tabs"></button>
+    <div class="headright">
+      <div class="toolbar">
+        <span class="bgwrap">
+          <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
+          <input class="bgrange" id="bgRange" type="range" min="0" max="100" step="1" value="50"
+                 aria-label="Background brightness" title="Background brightness">
+        </span>
+        <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
+      <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
+      </div>
+      <div class="tabsWrap">
+        <nav class="tabs" id="tabs"></nav>
+        <button class="tabsbar" id="tabsBar" title="Choose which tabs to show" aria-label="Choose tabs"></button>
+      </div>
     </div>
   </header>
-
-  <div class="toolbar">
-    <span class="bgwrap">
-      <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
-      <input class="bgrange" id="bgRange" type="range" min="0" max="100" step="1" value="50"
-             aria-label="Background brightness" title="Background brightness">
-    </span>
-    <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
-  </div>
 
   <section class="bench">
     <div class="bench-head">
@@ -911,6 +986,32 @@
       <span class="tip"><code>12 name</code> adds · <code>12 70%</code> sets burning</span>
     </div>
   </section>
+
+  <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <span class="drawer-title">QUEUE</span>
+      <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
+      <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
+    </div>
+
+    <div class="now" id="nowBox">
+      <div class="now-label">NOW PLAYING</div>
+      <div class="now-title" id="nowTitle">nothing yet</div>
+      <div class="now-by" id="nowBy"></div>
+      <div class="yt-holder" id="ytHolder" hidden><div id="ytPlayer"></div></div>
+      <div class="vol-row" id="volRow" hidden>
+        <span class="vol-ic">🔈</span>
+        <input class="bgrange volrange" id="volRange" type="range" min="0" max="100" step="1" value="35" aria-label="Music volume">
+      </div>
+    </div>
+
+    <div class="drawer-add">
+      <input id="songInput" placeholder="paste a YouTube link" maxlength="200" aria-label="YouTube link">
+      <button class="ghost" id="songAdd">add</button>
+    </div>
+
+    <div class="queue" id="queueList"></div>
+  </aside>
 
   <footer>
     <span id="tally"></span>
@@ -1386,6 +1487,14 @@ const HELP_HTML = `
   <p>Moved a group and the timer restarted, but the channel had really been going
      40 minutes? Hit the amber clock on the channel and set the true duration.
      It applies to everyone on that channel at once.</p>
+
+  <h5>MUSIC</h5>
+  <p>The <span class="k">♪ music</span> button opens a shared queue — paste a YouTube link
+     and it joins the line for everyone. You can only remove songs you queued yourself.</p>
+  <p>Hearing it is opt-in: nothing plays until you press <span class="k">listen: on</span>
+     in the drawer, and that choice is yours alone. Once it's on, playback carries on while
+     you're on another tab or in game, and everyone listening is at roughly the same point
+     in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
 
   <h5>TIDYING THE TABS</h5>
   <p>The thin bar under the region tabs opens a list — tick the boards you care about,
@@ -3146,6 +3255,187 @@ setInterval(checkForUpdate, 45000);
 // and check the moment someone comes back to the tab
 document.addEventListener("visibilitychange", () => { if(!document.hidden) checkForUpdate(); });
 socket.on("connect", () => setTimeout(checkForUpdate, 800));
+
+/* ---------------- music: shared queue, opt-in playback ----------------
+   The queue is shared by everyone. Playback is per-browser and off by
+   default, so nobody gets sound they didn't ask for. You can only remove
+   songs you queued yourself.
+   ------------------------------------------------------------------ */
+let music = { queue: [], playing: null };
+let listening = false;
+try { listening = localStorage.getItem("ct:listen") === "on" } catch(e){}
+let musicVol = 35;
+try { musicVol = Math.min(100, Math.max(0, parseInt(localStorage.getItem("ct:vol"), 10))) } catch(e){}
+if(!isFinite(musicVol)) musicVol = 35;
+
+let ytPlayer = null, ytReady = false, ytWanted = null, titleSent = {};
+
+socket.on("music", m => {
+  music = (m && typeof m === "object") ? m : { queue: [], playing: null };
+  renderMusic();
+  syncPlayer();
+});
+
+/* ---- the drawer ---- */
+const drawer = document.getElementById("drawer");
+document.getElementById("musicBtn").onclick = () => {
+  drawer.hidden = !drawer.hidden;
+  if(!drawer.hidden){ renderMusic(); }
+};
+document.getElementById("drawerX").onclick = () => { drawer.hidden = true; };
+
+document.getElementById("songAdd").onclick = addSong;
+document.getElementById("songInput").addEventListener("keydown", e => {
+  if(e.key === "Enter") addSong();
+});
+function addSong(){
+  const inp = document.getElementById("songInput");
+  const v = inp.value.trim();
+  if(!v) return;
+  socket.emit("action", { type:"music-add", url:v, by:me, token:myToken, region });
+  inp.value = "";
+}
+
+const listenBtn = document.getElementById("listenBtn");
+listenBtn.onclick = () => {
+  listening = !listening;
+  try { localStorage.setItem("ct:listen", listening ? "on" : "off") } catch(e){}
+  paintListen();
+  if(listening) ensurePlayer(); else stopPlayer();
+  syncPlayer();
+};
+function paintListen(){
+  listenBtn.textContent = listening ? "listen: on" : "listen: off";
+  listenBtn.classList.toggle("on", listening);
+  document.getElementById("ytHolder").hidden = !listening;
+  document.getElementById("volRow").hidden = !listening;
+}
+
+const volRange = document.getElementById("volRange");
+volRange.value = musicVol;
+volRange.addEventListener("input", () => {
+  musicVol = parseInt(volRange.value, 10) || 0;
+  if(ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(musicVol);
+});
+volRange.addEventListener("change", () => {
+  try { localStorage.setItem("ct:vol", String(musicVol)) } catch(e){}
+});
+
+/* ---- the list ---- */
+function renderMusic(){
+  const t = document.getElementById("nowTitle");
+  const b = document.getElementById("nowBy");
+  const list = document.getElementById("queueList");
+  if(!t || !list) return;
+
+  const cur = music.playing;
+  t.textContent = cur ? (cur.title || "loading…") : "nothing playing";
+  b.textContent = cur ? "added by " + cur.by : "";
+
+  list.innerHTML = "";
+  if(!music.queue.length){
+    const e = document.createElement("div");
+    e.className = "q-empty";
+    e.textContent = "Queue is empty — paste a link above.";
+    list.appendChild(e);
+    return;
+  }
+  music.queue.forEach((item, i) => {
+    const row = document.createElement("div");
+    row.className = "q-row";
+
+    const n = document.createElement("span");
+    n.className = "q-num"; n.textContent = (i + 1);
+    row.appendChild(n);
+
+    const main = document.createElement("div");
+    main.className = "q-main";
+    const ti = document.createElement("div");
+    ti.className = "q-title";
+    ti.textContent = item.title || item.videoId;
+    const by = document.createElement("div");
+    by.className = "q-by"; by.textContent = "added by " + item.by;
+    main.append(ti, by);
+    row.appendChild(main);
+
+    // your own songs only
+    if(item.token === myToken){
+      const x = document.createElement("button");
+      x.className = "q-x";
+      x.innerHTML = crossSVG();
+      x.title = "Remove your song";
+      x.onclick = () => socket.emit("action", { type:"music-remove", id:item.id, token:myToken, region });
+      row.appendChild(x);
+    }
+    list.appendChild(row);
+  });
+}
+
+/* ---- the player, only if you asked for it ---- */
+function ensurePlayer(){
+  if(ytPlayer || !listening) return;
+  if(!window.YT || !window.YT.Player){
+    if(!document.getElementById("ytApi")){
+      const tag = document.createElement("script");
+      tag.id = "ytApi";
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+    }
+    window.onYouTubeIframeAPIReady = () => { ytReady = true; ensurePlayer(); };
+    return;
+  }
+  ytReady = true;
+  ytPlayer = new window.YT.Player("ytPlayer", {
+    height: "170", width: "100%",
+    playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1, playsinline: 1 },
+    events: {
+      onReady: () => { ytPlayer.setVolume(musicVol); syncPlayer(); },
+      onStateChange: e => {
+        if(e.data === window.YT.PlayerState.ENDED && music.playing){
+          socket.emit("action", { type:"music-ended", id: music.playing.id, region });
+        }
+        if(e.data === window.YT.PlayerState.PLAYING) reportTitle();
+      }
+    }
+  });
+}
+function stopPlayer(){
+  if(ytPlayer && ytPlayer.destroy){
+    try { ytPlayer.destroy() } catch(e){}
+  }
+  ytPlayer = null; ytWanted = null;
+  const holder = document.getElementById("ytPlayer");
+  if(holder) holder.innerHTML = "";
+}
+function reportTitle(){
+  const cur = music.playing;
+  if(!cur || !ytPlayer || !ytPlayer.getVideoData) return;
+  if(titleSent[cur.id]) return;
+  const data = ytPlayer.getVideoData();
+  if(data && data.title){
+    titleSent[cur.id] = true;
+    socket.emit("action", { type:"music-title", id: cur.id, title: data.title, region });
+  }
+}
+// everyone hears roughly the same moment: seek to however far in the song is
+function syncPlayer(){
+  if(!listening){ return; }
+  if(!ytPlayer){ ensurePlayer(); return; }
+  const cur = music.playing;
+  if(!cur){
+    if(ytPlayer.stopVideo) ytPlayer.stopVideo();
+    ytWanted = null;
+    return;
+  }
+  const offset = Math.max(0, Math.floor((Date.now() - cur.startedAt) / 1000));
+  if(ytWanted !== cur.id){
+    ytWanted = cur.id;
+    if(ytPlayer.loadVideoById) ytPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: offset });
+    setTimeout(reportTitle, 1200);
+  }
+}
+paintListen();
+if(listening) ensurePlayer();
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
