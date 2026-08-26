@@ -271,8 +271,18 @@
     box-shadow:0 0 14px -2px rgba(167,139,250,1);
   }
   .movebar svg{width:13px;height:13px;display:block}
+  .timerwrap{display:inline-flex;align-items:stretch;gap:4px;margin-right:8px}
+  .timerreset{
+    flex:none;width:30px;display:grid;place-items:center;padding:0;cursor:pointer;
+    border-radius:9px;color:#a5b4fc;border:1px solid rgba(129,140,248,.45);
+    background:linear-gradient(140deg,rgba(129,140,248,.16),rgba(56,189,248,.12));
+    transition:.15s;
+  }
+  .timerreset:hover{color:#e0e7ff;border-color:#818cf8;background:linear-gradient(140deg,rgba(129,140,248,.32),rgba(56,189,248,.24))}
+  .timerreset svg{width:14px;height:14px;display:block;transition:transform .5s ease}
+  .timerreset.spun svg{transform:rotate(-360deg)}
   .timerbtn{
-    flex:none;margin-right:8px;padding:8px 13px;border-radius:9px;cursor:pointer;
+    flex:none;padding:8px 13px;border-radius:9px;cursor:pointer;
     font:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;line-height:1.2;
     color:#a5b4fc;border:1px solid rgba(129,140,248,.45);
     background:linear-gradient(140deg,rgba(129,140,248,.16),rgba(56,189,248,.12));
@@ -792,7 +802,10 @@
     </div>
     <span class="sticker-row" id="stickHead"></span>
     <div class="spacer"></div>
-    <button class="timerbtn" id="mvpTimerBtn" title="Start the 29:30 countdown">29:30</button>
+    <span class="timerwrap">
+      <button class="timerbtn" id="mvpTimerBtn" title="Start the 29:30 countdown">29:30</button>
+      <button class="timerreset" id="mvpTimerReset" title="Restart the countdown from 29:30" aria-label="Restart countdown"></button>
+    </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
     <nav class="tabs" id="tabs"></nav>
@@ -991,6 +1004,12 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function restartSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M20 11.5a8 8 0 1 1-2.6-5.4"/><path d="M20 4v5h-5"/></svg>';
+}
 
 function clockSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
@@ -1297,8 +1316,9 @@ const HELP_HTML = `
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
      sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
   <p>The <span class="k">29:30</span> button beside it counts down and fires the same alarm
-     when it reaches zero. Once it's counting it can't be nudged — it runs to zero.
-     Right-click (or hold) to cancel it. Everyone sees the same clock.</p>
+     when it reaches zero. Once it's counting, the clock itself is locked so nobody
+     knocks it by accident — use the <span class="k">↻</span> beside it to start a fresh
+     29:30. Everyone sees the same clock.</p>
   <p><span class="k">Right-click</span> the MVP button (or hold it on a phone) to write what the alarm
      should say — whatever you set is what everyone sees in the popup.</p>
   <p>Anyone not on a channel hears nothing, so people who are just watching the board
@@ -1814,6 +1834,7 @@ function rankChannels(skipIdx){
 }
 
 function openDurationMenu(anchor, ci){
+  if(toggledOpen(anchor)) return;
   closeMenu();
   const c = board[ci];
   if(!c) return;
@@ -1867,10 +1888,12 @@ function openDurationMenu(anchor, ci){
   m.style.left = Math.max(8, left) + "px";
   m.style.top = top + "px";
   menuEl = m;
+  menuOwner = anchor;
   setTimeout(() => inp.focus(), 0);
 }
 
 function openNextMenu(anchor, fromIdx){
+  if(toggledOpen(anchor)) return;
   closeMenu();
   const picks = rankChannels(fromIdx);
 
@@ -2004,6 +2027,7 @@ function openNextMenu(anchor, fromIdx){
   m.style.left = Math.max(8, left) + "px";
   m.style.top = top + "px";
   menuEl = m;
+  menuOwner = anchor;
 }
 
 /* ---------------- the bench ---------------- */
@@ -2036,6 +2060,7 @@ function personSVG(){
 }
 
 function openColorMenu(anchor, person){
+  if(toggledOpen(anchor)) return;
   closeMenu();
   const m = document.createElement("div");
   m.className = "colmenu";
@@ -2098,6 +2123,7 @@ function openColorMenu(anchor, person){
   m.style.left = Math.max(8, Math.min(r.left - 8, window.innerWidth - w - 10)) + "px";
   m.style.top = (r.bottom + 6 + hh > window.innerHeight - 8 ? Math.max(8, r.top - hh - 6) : r.bottom + 6) + "px";
   menuEl = m;
+  menuOwner = anchor;
 }
 
 function renderBench(){
@@ -2508,9 +2534,19 @@ function row(en,ci){
 }
 
 /* ---------------- burning % popover ---------------- */
-function closeMenu(){ if(menuEl){ menuEl.remove(); menuEl = null } }
+let menuOwner = null;
+function closeMenu(){
+  if(menuEl){ menuEl.remove(); menuEl = null; }
+  menuOwner = null;
+}
+// clicking the same button twice should close, not reopen
+function toggledOpen(anchor){
+  if(menuEl && menuOwner === anchor){ closeMenu(); return true; }
+  return false;
+}
 
 function openPctMenu(anchor, ci){
+  if(toggledOpen(anchor)) return;
   closeMenu();
   const m = document.createElement("div");
   m.className = "pctmenu";
@@ -2556,6 +2592,7 @@ function openPctMenu(anchor, ci){
   m.style.left = Math.max(10,left) + "px";
   m.style.top = top + "px";
   menuEl = m;
+  menuOwner = anchor;
 }
 document.addEventListener("click", closeMenu);
 document.addEventListener("keydown", e => {
@@ -2688,8 +2725,7 @@ function paintMvpTimer(){
   b.textContent = mm + ":" + ss;
   b.classList.add("running");
   b.classList.toggle("soon", left <= 60000);
-  b.title = "Started by " + (mvpTimer.by || "someone")
-    + "  ·  runs to zero, right-click to cancel";
+  b.title = "Started by " + (mvpTimer.by || "someone") + "  ·  runs to zero";
 }
 
 function paintMvpTitle(){
@@ -2717,16 +2753,17 @@ mvpTimerBtn.onclick = () => {
   primeAudio();
   send({ type:"mvptimer" });
 };
-mvpTimerBtn.oncontextmenu = e => {
-  e.preventDefault();
-  if(mvpTimer) send({ type:"mvptimer", stop:true });
+// right-clicking used to cancel it, which was far too easy to do by accident
+mvpTimerBtn.oncontextmenu = e => e.preventDefault();
+
+const mvpTimerReset = document.getElementById("mvpTimerReset");
+mvpTimerReset.innerHTML = restartSVG();
+mvpTimerReset.onclick = () => {
+  primeAudio();
+  send({ type:"mvptimer" });          // always starts a fresh 29:30
+  mvpTimerReset.classList.add("spun");
+  setTimeout(() => mvpTimerReset.classList.remove("spun"), 500);
 };
-let timerHold = null;
-mvpTimerBtn.addEventListener("touchstart", () => {
-  timerHold = setTimeout(() => { if(mvpTimer) send({ type:"mvptimer", stop:true }) }, 600);
-}, { passive:true });
-["touchend","touchmove","touchcancel"].forEach(ev =>
-  mvpTimerBtn.addEventListener(ev, () => clearTimeout(timerHold), { passive:true }));
 paintMvpTimer();
 
 mvpBtn.onclick = () => {
