@@ -281,6 +281,12 @@
   .timerreset:hover{color:#e0e7ff;border-color:#818cf8;background:linear-gradient(140deg,rgba(129,140,248,.32),rgba(56,189,248,.24))}
   .timerreset svg{width:14px;height:14px;display:block;transition:transform .5s ease}
   .timerreset.spun svg{transform:rotate(-360deg)}
+  .timerreset.stopping{
+    color:#fda4af;border-color:rgba(244,63,94,.5);
+    background:linear-gradient(140deg,rgba(244,63,94,.2),rgba(249,115,22,.14));
+  }
+  .timerreset.stopping:hover{color:#fff;border-color:#fb7185;background:linear-gradient(140deg,rgba(244,63,94,.38),rgba(249,115,22,.26))}
+  .timerreset.stopping svg{width:12px;height:12px}
   .timerbtn{
     flex:none;padding:8px 13px;border-radius:9px;cursor:pointer;
     font:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;line-height:1.2;
@@ -674,6 +680,19 @@
   }
   .modal-close:hover{color:var(--text)}
   footer{margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--dim)}
+  .bgwrap{display:inline-flex;flex-direction:column;align-items:stretch;gap:5px}
+  .bgrange{
+    -webkit-appearance:none;appearance:none;width:100%;height:4px;
+    border-radius:999px;cursor:pointer;background:linear-gradient(90deg,#1b2836,var(--cyan));
+  }
+  .bgrange[hidden]{display:none}
+  .bgrange::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;
+    background:var(--cyan);border:0;box-shadow:0 0 8px -2px var(--cyan);cursor:pointer;
+  }
+  .bgrange::-moz-range-thumb{
+    width:12px;height:12px;border-radius:50%;background:var(--cyan);border:0;cursor:pointer;
+  }
   .ghost{font:inherit;font-size:11.5px;color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 13px;cursor:pointer}
   .ghost:hover{color:var(--text);border-color:#2d3f52}
   .ghost.danger:hover{color:var(--red);border-color:rgba(239,68,68,.5)}
@@ -753,7 +772,7 @@
 
   /* a touch more contrast under the text, since the video moves behind it */
   html.has-bg .wrap{text-shadow:0 1px 2px rgba(0,0,0,.45)}
-  html.has-bg .bgmedia{opacity:.7}
+  html.has-bg .bgmedia{opacity:var(--bgopacity,.7)}
   /* stills get a slow drift so they don't look like a frozen screenshot */
   #bgStill{
     animation:stillDrift 48s ease-in-out infinite alternate;
@@ -848,7 +867,11 @@
     <span id="tally"></span>
     <span class="sticker-row" id="stickFoot"></span>
     <div class="spacer"></div>
-    <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
+    <span class="bgwrap">
+      <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
+      <input class="bgrange" id="bgRange" type="range" min="0" max="100" step="1" value="50"
+             aria-label="Background brightness" title="Background brightness">
+    </span>
     <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
   </footer>
 </div>
@@ -1004,6 +1027,11 @@ const STICKER_PER_SIDE = 14;          // how many down each side
 const STICKER_FOOTER   = 10;          // how many along the bottom strip
 const STICKER_MIN = 46, STICKER_MAX = 108;   // size range in px
 const STICKER_OPACITY = 0.9;
+
+function stopSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    + '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>';
+}
 
 function restartSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
@@ -1318,7 +1346,9 @@ const HELP_HTML = `
   <p>The <span class="k">29:30</span> button beside it counts down and fires the same alarm
      when it reaches zero. Once it's counting, the clock itself is locked so nobody
      knocks it by accident — use the <span class="k">↻</span> beside it to start a fresh
-     29:30. Everyone sees the same clock.</p>
+     29:30. The button beside it stops a running clock and parks it back at 29:30 —
+     press the clock again when you want it going. If nothing is running, that same
+     button just starts it. Everyone sees the same clock.</p>
   <p><span class="k">Right-click</span> the MVP button (or hold it on a phone) to write what the alarm
      should say — whatever you set is what everyone sees in the popup.</p>
   <p>Anyone not on a channel hears nothing, so people who are just watching the board
@@ -2712,11 +2742,22 @@ const mvpBtn = document.getElementById("mvpBtn");
 function paintMvpTimer(){
   const b = document.getElementById("mvpTimerBtn");
   if(!b) return;
+  const reset = document.getElementById("mvpTimerReset");
   if(!mvpTimer || !mvpTimer.endsAt){
     b.textContent = "29:30";
     b.classList.remove("running","soon");
     b.title = "Start the 29:30 countdown";
+    if(reset){
+      reset.innerHTML = restartSVG();
+      reset.title = "Start it now";
+      reset.classList.remove("stopping");
+    }
     return;
+  }
+  if(reset){
+    reset.innerHTML = stopSVG();
+    reset.title = "Stop and park it back at 29:30";
+    reset.classList.add("stopping");
   }
   const left = Math.max(0, mvpTimer.endsAt - Date.now());
   const total = Math.round(left / 1000);
@@ -2757,12 +2798,16 @@ mvpTimerBtn.onclick = () => {
 mvpTimerBtn.oncontextmenu = e => e.preventDefault();
 
 const mvpTimerReset = document.getElementById("mvpTimerReset");
-mvpTimerReset.innerHTML = restartSVG();
 mvpTimerReset.onclick = () => {
   primeAudio();
-  send({ type:"mvptimer" });          // always starts a fresh 29:30
-  mvpTimerReset.classList.add("spun");
-  setTimeout(() => mvpTimerReset.classList.remove("spun"), 500);
+  const running = mvpTimer && mvpTimer.endsAt > Date.now();
+  if(running){
+    send({ type:"mvptimer", stop:true });    // park it back at 29:30, nothing counting
+  } else {
+    send({ type:"mvptimer" });               // already idle, so just get going
+    mvpTimerReset.classList.add("spun");
+    setTimeout(() => mvpTimerReset.classList.remove("spun"), 500);
+  }
 };
 paintMvpTimer();
 
@@ -2784,9 +2829,32 @@ try { bgOn = localStorage.getItem("ct:bg") !== "off" } catch(e){}
 function paintBg(){
   document.documentElement.classList.toggle("bg-off", !bgOn);
   bgBtn.textContent = bgOn ? "background: on" : "background: off";
+  if(typeof bgRange !== "undefined" && bgRange) bgRange.hidden = !bgOn;
   const v = document.getElementById("bgVideo");
   if(v){ bgOn ? v.play().catch(() => {}) : v.pause(); }
 }
+const bgRange = document.getElementById("bgRange");
+let bgLevel = 50;                      // 0 = barely there, 100 = full strength
+try { bgLevel = Math.min(100, Math.max(0, parseInt(localStorage.getItem("ct:bglevel"), 10))) } catch(e){}
+if(!isFinite(bgLevel)) bgLevel = 50;
+
+function paintBgLevel(){
+  const v = bgLevel / 100;
+  // media gets brighter, panels get more solid to keep text readable
+  document.documentElement.style.setProperty("--bgopacity", (0.12 + v * 0.78).toFixed(3));
+  document.documentElement.style.setProperty("--glass", (0.72 - v * 0.34).toFixed(3));
+  bgRange.value = bgLevel;
+  bgRange.title = "Background brightness — " + bgLevel + "%";
+}
+bgRange.addEventListener("input", () => {
+  bgLevel = parseInt(bgRange.value, 10) || 0;
+  paintBgLevel();
+});
+bgRange.addEventListener("change", () => {
+  try { localStorage.setItem("ct:bglevel", String(bgLevel)) } catch(e){}
+});
+paintBgLevel();
+
 bgBtn.onclick = () => {
   bgOn = !bgOn;
   try { localStorage.setItem("ct:bg", bgOn ? "on" : "off") } catch(e){}
