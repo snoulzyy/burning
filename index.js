@@ -66,6 +66,7 @@ function hydrate(saved) {
     state[r].log = keep;
   });
   if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
+  if (typeof state.mvpMsg !== "string") state.mvpMsg = "";
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
@@ -165,6 +166,7 @@ io.on("connection", socket => {
     socket.emit("chatlog", state.chat);
     socket.emit("roster", state.rosters);
     socket.emit("notice", state.notice);
+    socket.emit("mvpmsg", state.mvpMsg);
     presence();
   });
 
@@ -331,6 +333,16 @@ io.on("connection", socket => {
         broadcastRoster();
         return;
       }
+      case "mvpmsg": {
+        state.mvpMsg = clean(a.text, 140);
+        note(region, state.mvpMsg
+          ? `MVP alert message set by ${by}`
+          : `MVP alert message reset by ${by}`);
+        persist();
+        io.emit("mvpmsg", state.mvpMsg);
+        broadcast(region);
+        return;
+      }
       case "notice": {
         const text = clean(a.text, 240);
         state.notice = text
@@ -433,7 +445,7 @@ io.on("connection", socket => {
     note(viewing, `MVP called by ${by}`);
     persist();
     broadcast(viewing);
-    io.emit("mvp", { by, t: now });
+    io.emit("mvp", { by, t: now, msg: state.mvpMsg });
   });
 
   socket.on("chat", m => {

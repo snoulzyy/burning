@@ -1283,6 +1283,8 @@ const HELP_HTML = `
   <h5>MVP CALL</h5>
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
      sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
+  <p><span class="k">Right-click</span> it (or hold it on a phone) to write what the alarm
+     should say — whatever you set is what everyone sees in the popup.</p>
   <p>Anyone not on a channel hears nothing, so people who are just watching the board
      don't get bothered.</p>
 
@@ -1574,17 +1576,21 @@ socket.on("mvp", m => {
     if(by === me) toast("MVP called — anyone on a channel just got it");
     return;
   }
+  const line = (m && m.msg) || mvpMsg;
+  const headline = line || "MVP";
+  const detail = line
+    ? by + " · you're on " + where
+    : by + " called it — you're on " + where;
+
   mvpAlarm();
-  flashTitle("MVP — " + where);
+  flashTitle(line ? line.slice(0, 40) : "MVP — " + where);
   try {
     if(window.Notification && Notification.permission === "granted"){
-      const n = new Notification("MVP", {
-        body: by + " called it — you're on " + where, requireInteraction: true
-      });
+      const n = new Notification(headline, { body: detail, requireInteraction: true });
       n.onclick = () => { window.focus(); stopFlash(); n.close(); };
     }
   } catch(e){}
-  toast("MVP called by " + by + " — you're on " + where);
+  toast(line ? line + " — " + by : "MVP called by " + by + " — you're on " + where);
 });
 
 socket.on("chatlog", arr => {
@@ -2620,12 +2626,34 @@ whoBtn.onclick = () => {
 };
 
 const mvpBtn = document.getElementById("mvpBtn");
+function paintMvpTitle(){
+  mvpBtn.title = (mvpMsg ? 'Alarm says: "' + mvpMsg + '"' : "Alarm everyone who's on a channel right now")
+    + "  ·  right-click to change the message";
+}
+
+function editMvpMessage(){
+  const v = prompt("What should the MVP alarm say? (empty for the default)", mvpMsg || "");
+  if(v === null) return;
+  send({ type:"mvpmsg", text: v.trim().slice(0,140) });
+}
+mvpBtn.oncontextmenu = e => { e.preventDefault(); editMvpMessage(); };
+
+// long-press does the same on a phone
+let mvpHold = null;
+mvpBtn.addEventListener("touchstart", () => { mvpHold = setTimeout(editMvpMessage, 600) }, { passive:true });
+["touchend","touchmove","touchcancel"].forEach(ev =>
+  mvpBtn.addEventListener(ev, () => clearTimeout(mvpHold), { passive:true }));
+
 mvpBtn.onclick = () => {
   primeAudio();
   socket.emit("mvp", { by: me });
   mvpBtn.classList.add("fired");
   setTimeout(() => mvpBtn.classList.remove("fired"), 900);
 };
+paintMvpTitle();
+
+let mvpMsg = "";
+socket.on("mvpmsg", t => { mvpMsg = typeof t === "string" ? t : "" ; paintMvpTitle(); });
 
 /* ---------------- announcements ---------------- */
 let notice = { text:"", by:"", at:0 };
