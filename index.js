@@ -18,9 +18,12 @@ const REGIONS = [
   { id: "B1",   area: "B1",  enabled: true },
   { id: "RD1",  area: "RD",  enabled: true },
   { id: "RD2",  area: "RD",  enabled: true },
+  { id: "RD3",  area: "RD",  enabled: true },
   { id: "RD4",  area: "RD",  enabled: true },
   { id: "GOB1", area: "GOB", enabled: true },
-  { id: "GOB5", area: "GOB", enabled: true }
+  { id: "GOB5", area: "GOB", enabled: true },
+  { id: "GOB7", area: "GOB", enabled: true },
+  { id: "GOB8", area: "GOB", enabled: true }
 ];
 const AREAS = [...new Set(REGIONS.filter(r => r.enabled).map(r => r.area))];
 const areaOf = id => (byId(id) || {}).area;

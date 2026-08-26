@@ -107,6 +107,35 @@
   @keyframes pulse{50%{opacity:.3}}
   .spacer{flex:1}
 
+  .tabsWrap{display:flex;flex-direction:column;gap:5px}
+  .tabsbar{
+    display:grid;place-items:center;width:100%;height:16px;padding:0;cursor:pointer;
+    border-radius:8px;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);line-height:0;transition:.15s;
+  }
+  .tabsbar:hover{color:var(--cyan);border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.07)}
+  .tabsbar svg{width:11px;height:11px;display:block;transform:rotate(90deg)}
+  .tabmenu{
+    position:fixed;z-index:60;min-width:170px;padding:9px;border-radius:12px;
+    background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
+  }
+  .tabmenu h4{margin:0 0 8px;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
+  .tablist{display:flex;flex-direction:column;gap:2px}
+  .tabrow{
+    display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;
+    font:inherit;font-size:12px;font-weight:600;letter-spacing:.06em;
+    color:var(--dim);background:none;border:1px solid transparent;cursor:pointer;text-align:left;
+  }
+  .tabrow:hover{background:rgba(255,255,255,.05);color:var(--text)}
+  .tabrow.on{color:var(--text)}
+  .tabrow .tick{
+    width:15px;height:15px;flex:none;display:grid;place-items:center;line-height:0;
+    border-radius:4px;border:1px solid var(--line);color:var(--cyan);
+  }
+  .tabrow.on .tick{border-color:rgba(34,211,238,.6);background:rgba(34,211,238,.14)}
+  .tabrow .tick svg{width:10px;height:10px;display:block}
+  .tabname{flex:1}
+  .tabnow{font-size:9px;letter-spacing:.1em;color:var(--cyan)}
   .tabs{display:flex;gap:5px;padding:6px;border-radius:13px;background:var(--panel);border:1px solid var(--line);flex-wrap:wrap}
   .tab{
     font:inherit;font-size:12px;font-weight:600;letter-spacing:.07em;
@@ -827,7 +856,10 @@
     </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
-    <nav class="tabs" id="tabs"></nav>
+    <div class="tabsWrap">
+      <nav class="tabs" id="tabs"></nav>
+      <button class="tabsbar" id="tabsBar" title="Choose which tabs to show" aria-label="Choose tabs"></button>
+    </div>
   </header>
 
   <section class="bench">
@@ -882,6 +914,11 @@ const CAP = 4;
 const socket = io();
 let region = decodeURIComponent(location.pathname.replace(/^\/|\/$/g, "")).toUpperCase() || "RD1";
 let regionList = [];
+let hiddenTabs = new Set();
+try { hiddenTabs = new Set(JSON.parse(localStorage.getItem("ct:hidetabs") || "[]")) } catch(e){}
+function saveHiddenTabs(){
+  try { localStorage.setItem("ct:hidetabs", JSON.stringify([...hiddenTabs])) } catch(e){}
+}
 
 let boards = {};        // region -> channels
 let logs = {};          // region -> activity log
@@ -1340,6 +1377,11 @@ const HELP_HTML = `
      40 minutes? Hit the amber clock on the channel and set the true duration.
      It applies to everyone on that channel at once.</p>
 
+  <h5>TIDYING THE TABS</h5>
+  <p>The thin bar under the region tabs opens a list — tick the boards you care about,
+     untick the rest. It only affects your own view, and the board you're currently on
+     always stays put.</p>
+
   <h5>MVP CALL</h5>
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
      sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
@@ -1565,9 +1607,14 @@ socket.on("hello", info => {
 });
 
 function renderTabs(){
+  const bar = document.getElementById("tabsBar");
+  if(bar && !bar.innerHTML) bar.innerHTML = chevron("right");
+  if(bar) bar.onclick = e => { e.stopPropagation(); openTabMenu(bar); };
   const tabs = document.getElementById("tabs");
   tabs.innerHTML = "";
   regionList.forEach(r => {
+    // hidden by choice — but never hide the board you're actually on
+    if(hiddenTabs.has(r.id) && r.id !== region) return;
     if(r.enabled){
       const b = document.createElement("button");
       b.className = "tab";
@@ -1581,6 +1628,65 @@ function renderTabs(){
       tabs.appendChild(sp);
     }
   });
+}
+
+function openTabMenu(anchor){
+  if(toggledOpen(anchor)) return;
+  closeMenu();
+
+  const m = document.createElement("div");
+  m.className = "tabmenu";
+  m.onclick = e => e.stopPropagation();
+
+  const h = document.createElement("h4");
+  h.textContent = "SHOW THESE TABS";
+  m.appendChild(h);
+
+  const list = document.createElement("div");
+  list.className = "tablist";
+  regionList.filter(r => r.enabled).forEach(r => {
+    const row = document.createElement("button");
+    row.className = "tabrow" + (hiddenTabs.has(r.id) ? "" : " on");
+    row.innerHTML = '<span class="tick"></span>';
+    row.querySelector(".tick").innerHTML = hiddenTabs.has(r.id) ? "" : tickSVG();
+    const label = document.createElement("span");
+    label.className = "tabname";
+    label.textContent = r.id;
+    row.appendChild(label);
+    if(r.id === region){
+      const now = document.createElement("span");
+      now.className = "tabnow";
+      now.textContent = "here";
+      row.appendChild(now);
+    }
+    row.onclick = () => {
+      if(hiddenTabs.has(r.id)) hiddenTabs.delete(r.id);
+      else if(r.id !== region) hiddenTabs.add(r.id);      // can't hide where you are
+      saveHiddenTabs();
+      renderTabs();
+      closeMenu();
+      openTabMenu(anchor);                                 // keep it open while picking
+    };
+    list.appendChild(row);
+  });
+  m.appendChild(list);
+  document.body.appendChild(m);
+
+  const r = anchor.getBoundingClientRect();
+  const w = m.offsetWidth, hh = m.offsetHeight;
+  let left = Math.min(r.right - w, window.innerWidth - w - 10);
+  let top = r.bottom + 6;
+  if(top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 6);
+  m.style.left = Math.max(8, left) + "px";
+  m.style.top = top + "px";
+  menuEl = m;
+  menuOwner = anchor;
+}
+
+function tickSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M5 12.5l4.5 4.5L19 7"/></svg>';
 }
 
 function paintTitles(){
@@ -2728,15 +2834,32 @@ const whoBtn = document.getElementById("whoBtn");
 whoBtn.textContent = me;
 whoBtn.onclick = () => {
   const v = prompt("Display name", me);
-  if(v && v.trim()){
-    me = v.trim().slice(0,24);
-    whoBtn.textContent = me;
-    try { localStorage.setItem("ct:name", me) } catch(e){}
-    try {
-      if(window.Notification && Notification.permission === "default") Notification.requestPermission();
-    } catch(e){}
-  }
+  if(!v || !v.trim()) return;
+  const old = me;
+  me = v.trim().slice(0,24);
+  whoBtn.textContent = me;
+  try { localStorage.setItem("ct:name", me) } catch(e){}
+  try {
+    if(window.Notification && Notification.permission === "default") Notification.requestPermission();
+  } catch(e){}
+  renameMyChips(old);
 };
+
+// you claimed a chip, then changed your display name — keep the two in step
+function renameMyChips(oldName){
+  Object.keys(rosters).forEach(area => {
+    const reg = regionOfArea(area);
+    (rosters[area] || []).forEach(p => {
+      if(p.claimedBy !== myToken) return;
+      if(p.name !== me) send({ type:"person-rename", id:p.id, name:me, region:reg });
+      send({ type:"claim", pid:p.id, token:myToken, who:me, region:reg });   // refresh who it says claimed it
+      // remember the new spelling locally too, so a wipe still reclaims it
+      if(oldName) myClaimNames.delete(oldName.trim().toLowerCase());
+      myClaimNames.add(me.trim().toLowerCase());
+    });
+  });
+  saveClaimNames();
+}
 
 const mvpBtn = document.getElementById("mvpBtn");
 function paintMvpTimer(){
