@@ -485,6 +485,18 @@ io.on("connection", socket => {
         if (q) q.duration = secs;
         return;
       }
+      case "music-seek": {
+        // somebody dragged the scrubber — move the shared clock so everyone follows
+        const cur = state.music.playing;
+        if (!cur || cur.id !== a.id) return;
+        const secs = Math.max(0, Math.min(60 * 60 * 6, Math.round(Number(a.seconds))));
+        if (!isFinite(secs)) return;
+        cur.startedAt = Date.now() - secs * 1000;
+        scheduleSongEnd();
+        persist();
+        broadcastMusic();
+        return;
+      }
       case "music-title": {
         const title = clean(a.title, 120);
         if (!title) return;
