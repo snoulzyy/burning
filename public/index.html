@@ -39,7 +39,9 @@
   .bgmedia{
     position:fixed;inset:0;width:100%;height:100%;z-index:-4;pointer-events:none;
     object-fit:cover;background-size:cover;background-position:center;
-    display:none;opacity:.5;filter:saturate(1.05) contrast(1.02);
+    display:none;opacity:.5;
+    /* no css filter here: it would re-process every frame and kill hardware decoding */
+    transform:translateZ(0);          /* keep it on its own compositor layer */
   }
   /* the neon eases off so it sits over your media instead of fighting it */
   .has-bg body::after,
@@ -686,6 +688,18 @@
   /* a touch more contrast under the text, since the video moves behind it */
   html.has-bg .wrap{text-shadow:0 1px 2px rgba(0,0,0,.45)}
   html.has-bg .bgmedia{opacity:.7}
+  /* switched off locally: media hidden, panels go solid again */
+  html.bg-off .bgmedia{display:none !important}
+  html.bg-off.has-bg .ch,
+  html.bg-off.has-bg .bench,
+  html.bg-off.has-bg .chat,
+  html.bg-off.has-bg .tabs,
+  html.bg-off.has-bg .logo,
+  html.bg-off.has-bg .row{background:var(--panel)}
+  html.bg-off.has-bg .chat,
+  html.bg-off.has-bg .tabs,
+  html.bg-off.has-bg .logo{backdrop-filter:none;-webkit-backdrop-filter:none}
+  html.bg-off .wrap{text-shadow:none}
   :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -753,6 +767,7 @@
     <span id="tally"></span>
     <span class="sticker-row" id="stickFoot"></span>
     <div class="spacer"></div>
+    <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
     <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
   </footer>
 </div>
@@ -2525,6 +2540,22 @@ mvpBtn.onclick = () => {
   setTimeout(() => mvpBtn.classList.remove("fired"), 900);
 };
 
+const bgBtn = document.getElementById("bgBtn");
+let bgOn = true;
+try { bgOn = localStorage.getItem("ct:bg") !== "off" } catch(e){}
+function paintBg(){
+  document.documentElement.classList.toggle("bg-off", !bgOn);
+  bgBtn.textContent = bgOn ? "background: on" : "background: off";
+  const v = document.getElementById("bgVideo");
+  if(v){ bgOn ? v.play().catch(() => {}) : v.pause(); }
+}
+bgBtn.onclick = () => {
+  bgOn = !bgOn;
+  try { localStorage.setItem("ct:bg", bgOn ? "on" : "off") } catch(e){}
+  paintBg();
+};
+paintBg();
+
 const soundBtn = document.getElementById("soundBtn");
 function paintSound(){ soundBtn.textContent = soundOn ? "🔊 alert: on" : "🔇 alert: off" }
 paintSound();
@@ -2625,6 +2656,12 @@ function checkChannelTimers(){
     vid.load();
   }
   tryVideos(0);
+
+  // no point decoding video nobody is looking at
+  document.addEventListener("visibilitychange", () => {
+    if(vid.style.display !== "block") return;
+    if(document.hidden) vid.pause(); else vid.play().catch(() => {});
+  });
 })();
 
 /* ---------------- clocks ---------------- */
