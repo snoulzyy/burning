@@ -836,6 +836,7 @@ let chat = [];          // one chat, shared by every region
 let rosters = {};       // area -> people list (RD boards share one, GOB another)
 let areaOf = {};        // region -> area
 let pickedPerson = null;
+let mvpMsg = "";        // what the MVP alarm says, set by whoever runs the board
 let myIds = new Set();  // people claimed by this browser, worked out from the server list
 let myToken = "";
 try {
@@ -1576,21 +1577,18 @@ socket.on("mvp", m => {
     if(by === me) toast("MVP called — anyone on a channel just got it");
     return;
   }
-  const line = (m && m.msg) || mvpMsg;
-  const headline = line || "MVP";
-  const detail = line
-    ? by + " · you're on " + where
-    : by + " called it — you're on " + where;
+  // just the message and who called it, nothing else
+  const line = ((m && m.msg) || mvpMsg || "MVP").trim();
 
   mvpAlarm();
-  flashTitle(line ? line.slice(0, 40) : "MVP — " + where);
+  flashTitle(line.slice(0, 40));
   try {
     if(window.Notification && Notification.permission === "granted"){
-      const n = new Notification(headline, { body: detail, requireInteraction: true });
+      const n = new Notification(line, { body: by, requireInteraction: true });
       n.onclick = () => { window.focus(); stopFlash(); n.close(); };
     }
   } catch(e){}
-  toast(line ? line + " — " + by : "MVP called by " + by + " — you're on " + where);
+  toast(line + ", " + by);
 });
 
 socket.on("chatlog", arr => {
@@ -2627,6 +2625,7 @@ whoBtn.onclick = () => {
 
 const mvpBtn = document.getElementById("mvpBtn");
 function paintMvpTitle(){
+  if(typeof mvpBtn === "undefined" || !mvpBtn) return;
   mvpBtn.title = (mvpMsg ? 'Alarm says: "' + mvpMsg + '"' : "Alarm everyone who's on a channel right now")
     + "  ·  right-click to change the message";
 }
@@ -2652,8 +2651,7 @@ mvpBtn.onclick = () => {
 };
 paintMvpTitle();
 
-let mvpMsg = "";
-socket.on("mvpmsg", t => { mvpMsg = typeof t === "string" ? t : "" ; paintMvpTitle(); });
+socket.on("mvpmsg", t => { mvpMsg = typeof t === "string" ? t : ""; paintMvpTitle(); });
 
 /* ---------------- announcements ---------------- */
 let notice = { text:"", by:"", at:0 };
