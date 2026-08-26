@@ -279,7 +279,15 @@
     transition:.15s;font-variant-numeric:tabular-nums;
   }
   .timerbtn:hover{color:#e0e7ff;border-color:#818cf8;background:linear-gradient(140deg,rgba(129,140,248,.32),rgba(56,189,248,.24))}
-  .timerbtn.running{color:#c7d2fe;border-color:rgba(129,140,248,.75);box-shadow:0 0 12px -4px rgba(129,140,248,.9)}
+  .timerbtn.running{
+    color:#c7d2fe;border-color:rgba(129,140,248,.75);
+    box-shadow:0 0 12px -4px rgba(129,140,248,.9);
+    cursor:default;                    /* nothing to click while it runs */
+  }
+  .timerbtn.running:hover{
+    color:#c7d2fe;background:linear-gradient(140deg,rgba(129,140,248,.16),rgba(56,189,248,.12));
+    border-color:rgba(129,140,248,.75);
+  }
   .timerbtn.soon{
     color:#fecdd3;border-color:rgba(244,63,94,.7);
     background:linear-gradient(140deg,rgba(244,63,94,.26),rgba(249,115,22,.18));
@@ -422,7 +430,7 @@
   }
   @keyframes mvpIn{from{opacity:0}to{opacity:1}}
   .mvp-card{
-    width:min(520px,calc(100vw - 40px));padding:30px 28px 24px;text-align:center;
+    width:min(520px,calc(100vw - 40px));padding:30px 28px 26px;text-align:center;
     border-radius:18px;background:linear-gradient(160deg,#160d14,#0b1119);
     border:1px solid rgba(244,63,94,.6);
     box-shadow:0 0 60px -10px rgba(244,63,94,.75),0 30px 70px rgba(0,0,0,.7);
@@ -438,12 +446,6 @@
     margin-top:12px;font-size:13px;font-weight:700;letter-spacing:.12em;
     color:#fda4af;text-transform:uppercase;
   }
-  .mvp-ok{
-    margin-top:22px;font:inherit;font-size:12px;font-weight:800;letter-spacing:.12em;
-    color:#fff;cursor:pointer;padding:9px 22px;border-radius:9px;
-    border:1px solid rgba(244,63,94,.6);background:rgba(244,63,94,.22);
-  }
-  .mvp-ok:hover{background:rgba(244,63,94,.4)}
   @media(max-width:700px){.mvp-msg{font-size:21px}}
 
   .update-bar{
@@ -1295,8 +1297,8 @@ const HELP_HTML = `
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
      sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
   <p>The <span class="k">29:30</span> button beside it counts down and fires the same alarm
-     when it reaches zero. Click it again at any point to restart from 29:30;
-     right-click (or hold) to stop it. Everyone sees the same clock.</p>
+     when it reaches zero. Once it's counting it can't be nudged — it runs to zero.
+     Right-click (or hold) to cancel it. Everyone sees the same clock.</p>
   <p><span class="k">Right-click</span> the MVP button (or hold it on a phone) to write what the alarm
      should say — whatever you set is what everyone sees in the popup.</p>
   <p>Anyone not on a channel hears nothing, so people who are just watching the board
@@ -1596,16 +1598,11 @@ function showMvpPopup(line, by){
   who.className = "mvp-who";
   who.textContent = by;
 
-  const ok = document.createElement("button");
-  ok.className = "mvp-ok";
-  ok.textContent = "got it";
-  ok.onclick = closeMvpPopup;
-
-  card.append(msg, who, ok);
+  card.append(msg, who);
   wrap.appendChild(card);
-  wrap.onclick = e => { if(e.target === wrap) closeMvpPopup(); };
+  wrap.onclick = closeMvpPopup;                 // tap anywhere if you want it gone sooner
   document.body.appendChild(wrap);
-  mvpPopTimer = setTimeout(closeMvpPopup, 20000);
+  mvpPopTimer = setTimeout(closeMvpPopup, 3000);
 }
 document.addEventListener("keydown", e => { if(e.key === "Escape") closeMvpPopup(); });
 
@@ -2692,7 +2689,7 @@ function paintMvpTimer(){
   b.classList.add("running");
   b.classList.toggle("soon", left <= 60000);
   b.title = "Started by " + (mvpTimer.by || "someone")
-    + "  ·  click to restart, right-click to stop";
+    + "  ·  runs to zero, right-click to cancel";
 }
 
 function paintMvpTitle(){
@@ -2716,8 +2713,9 @@ mvpBtn.addEventListener("touchstart", () => { mvpHold = setTimeout(editMvpMessag
 
 const mvpTimerBtn = document.getElementById("mvpTimerBtn");
 mvpTimerBtn.onclick = () => {
+  if(mvpTimer && mvpTimer.endsAt > Date.now()) return;   // already counting, leave it alone
   primeAudio();
-  send({ type:"mvptimer" });                 // start, or restart from the top
+  send({ type:"mvptimer" });
 };
 mvpTimerBtn.oncontextmenu = e => {
   e.preventDefault();
