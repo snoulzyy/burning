@@ -119,31 +119,6 @@
   .tab.soon{color:#33465a;cursor:not-allowed;background:none}
   .tab.soon:hover{background:none;color:#33465a}
 
-  /* ---------------- notice ---------------- */
-  .notice{
-    display:flex;align-items:center;gap:10px;margin-bottom:14px;
-    padding:10px 13px;border-radius:11px;
-    background:linear-gradient(120deg,rgba(245,158,11,.16),rgba(244,63,94,.12));
-    border:1px solid rgba(245,158,11,.5);
-    box-shadow:0 0 18px -8px rgba(245,158,11,.9);
-  }
-  .notice[hidden]{display:none}
-  .notice-tag{
-    flex:none;font-size:9.5px;font-weight:800;letter-spacing:.16em;color:#fde68a;
-    padding:3px 7px;border-radius:5px;background:rgba(245,158,11,.22);
-  }
-  .notice-text{
-    flex:1;min-width:0;font-size:13px;font-weight:600;color:#fff7e6;
-    font-family:var(--name-face);word-break:break-word;
-  }
-  .notice-by{flex:none;font-size:10px;color:#d9b483;white-space:nowrap}
-  .notice-x{
-    flex:none;font:inherit;font-size:12px;line-height:1;color:#d9b483;
-    background:none;border:0;cursor:pointer;padding:2px 3px;
-  }
-  .notice-x:hover{color:#fff}
-  @media(max-width:700px){.notice-by{display:none}}
-
   /* ---------------- bench ---------------- */
   .bench{
     position:sticky;top:8px;z-index:30;
@@ -296,6 +271,21 @@
     box-shadow:0 0 14px -2px rgba(167,139,250,1);
   }
   .movebar svg{width:13px;height:13px;display:block}
+  .timerbtn{
+    flex:none;margin-right:8px;padding:8px 13px;border-radius:9px;cursor:pointer;
+    font:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;line-height:1.2;
+    color:#a5b4fc;border:1px solid rgba(129,140,248,.45);
+    background:linear-gradient(140deg,rgba(129,140,248,.16),rgba(56,189,248,.12));
+    transition:.15s;font-variant-numeric:tabular-nums;
+  }
+  .timerbtn:hover{color:#e0e7ff;border-color:#818cf8;background:linear-gradient(140deg,rgba(129,140,248,.32),rgba(56,189,248,.24))}
+  .timerbtn.running{color:#c7d2fe;border-color:rgba(129,140,248,.75);box-shadow:0 0 12px -4px rgba(129,140,248,.9)}
+  .timerbtn.soon{
+    color:#fecdd3;border-color:rgba(244,63,94,.7);
+    background:linear-gradient(140deg,rgba(244,63,94,.26),rgba(249,115,22,.18));
+    animation:timerSoon 1s ease-in-out infinite;
+  }
+  @keyframes timerSoon{0%,100%{opacity:.85}50%{opacity:1}}
   .mvpbtn{
     flex:none;margin-right:10px;padding:8px 15px;border-radius:9px;cursor:pointer;
     font:inherit;font-size:11.5px;font-weight:800;letter-spacing:.14em;line-height:1.2;
@@ -424,6 +414,38 @@
     box-shadow:0 12px 34px rgba(0,0,0,.7);max-width:calc(100% - 24px);
   }
   .toast.warn{border-color:rgba(239,68,68,.7)}
+  /* ---------------- mvp popup ---------------- */
+  .mvp-pop{
+    position:fixed;inset:0;z-index:120;display:grid;place-items:center;
+    background:rgba(4,8,13,.72);backdrop-filter:blur(5px);
+    animation:mvpIn .18s ease-out;
+  }
+  @keyframes mvpIn{from{opacity:0}to{opacity:1}}
+  .mvp-card{
+    width:min(520px,calc(100vw - 40px));padding:30px 28px 24px;text-align:center;
+    border-radius:18px;background:linear-gradient(160deg,#160d14,#0b1119);
+    border:1px solid rgba(244,63,94,.6);
+    box-shadow:0 0 60px -10px rgba(244,63,94,.75),0 30px 70px rgba(0,0,0,.7);
+    animation:mvpPop .28s cubic-bezier(.2,1.3,.4,1);
+  }
+  @keyframes mvpPop{from{transform:scale(.9)}to{transform:scale(1)}}
+  .mvp-msg{
+    font-family:var(--name-face);font-size:26px;font-weight:700;line-height:1.25;
+    color:#fff;word-break:break-word;
+    text-shadow:0 0 22px rgba(244,63,94,.6);
+  }
+  .mvp-who{
+    margin-top:12px;font-size:13px;font-weight:700;letter-spacing:.12em;
+    color:#fda4af;text-transform:uppercase;
+  }
+  .mvp-ok{
+    margin-top:22px;font:inherit;font-size:12px;font-weight:800;letter-spacing:.12em;
+    color:#fff;cursor:pointer;padding:9px 22px;border-radius:9px;
+    border:1px solid rgba(244,63,94,.6);background:rgba(244,63,94,.22);
+  }
+  .mvp-ok:hover{background:rgba(244,63,94,.4)}
+  @media(max-width:700px){.mvp-msg{font-size:21px}}
+
   .update-bar{
     position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:95;
     font:inherit;font-size:12px;font-weight:700;color:#04202a;cursor:pointer;
@@ -768,18 +790,11 @@
     </div>
     <span class="sticker-row" id="stickHead"></span>
     <div class="spacer"></div>
-    <button class="ghost" id="noticeBtn" title="Post a notice everyone sees">notice</button>
+    <button class="timerbtn" id="mvpTimerBtn" title="Start the 29:30 countdown">29:30</button>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
     <nav class="tabs" id="tabs"></nav>
   </header>
-
-  <div class="notice" id="notice" hidden>
-    <span class="notice-tag">NOTICE</span>
-    <span class="notice-text" id="noticeText"></span>
-    <span class="notice-by" id="noticeBy"></span>
-    <button class="notice-x" id="noticeHide" title="Hide until it changes">✕</button>
-  </div>
 
   <section class="bench">
     <div class="bench-head">
@@ -837,6 +852,7 @@ let rosters = {};       // area -> people list (RD boards share one, GOB another
 let areaOf = {};        // region -> area
 let pickedPerson = null;
 let mvpMsg = "";        // what the MVP alarm says, set by whoever runs the board
+let mvpTimer = null;    // { endsAt, by } — shared countdown, everyone sees the same clock
 let myIds = new Set();  // people claimed by this browser, worked out from the server list
 let myToken = "";
 try {
@@ -1275,16 +1291,13 @@ const HELP_HTML = `
      40 minutes? Hit the amber clock on the channel and set the true duration.
      It applies to everyone on that channel at once.</p>
 
-  <h5>NOTICES</h5>
-  <p>The <span class="k">notice</span> button up top posts a message across the top of
-     the page for everyone, on every board. Handy for anything people keep missing.</p>
-  <p>It stays until someone clears it (post an empty one). Anyone can hide it for
-     themselves with the ✕, and it comes back when the message changes.</p>
-
   <h5>MVP CALL</h5>
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
      sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
-  <p><span class="k">Right-click</span> it (or hold it on a phone) to write what the alarm
+  <p>The <span class="k">29:30</span> button beside it counts down and fires the same alarm
+     when it reaches zero. Click it again at any point to restart from 29:30;
+     right-click (or hold) to stop it. Everyone sees the same clock.</p>
+  <p><span class="k">Right-click</span> the MVP button (or hold it on a phone) to write what the alarm
      should say — whatever you set is what everyone sees in the popup.</p>
   <p>Anyone not on a channel hears nothing, so people who are just watching the board
      don't get bothered.</p>
@@ -1558,6 +1571,44 @@ socket.on("roster", obj => {
 });
 
 // where am I right now, if anywhere? checks every board, not just the visible one
+// front and centre, so nobody misses it
+let mvpPopTimer = null;
+function closeMvpPopup(){
+  const old = document.getElementById("mvpPop");
+  if(old) old.remove();
+  clearTimeout(mvpPopTimer);
+  stopFlash();
+}
+function showMvpPopup(line, by){
+  closeMvpPopup();
+  const wrap = document.createElement("div");
+  wrap.className = "mvp-pop";
+  wrap.id = "mvpPop";
+
+  const card = document.createElement("div");
+  card.className = "mvp-card";
+
+  const msg = document.createElement("div");
+  msg.className = "mvp-msg";
+  msg.textContent = line;
+
+  const who = document.createElement("div");
+  who.className = "mvp-who";
+  who.textContent = by;
+
+  const ok = document.createElement("button");
+  ok.className = "mvp-ok";
+  ok.textContent = "got it";
+  ok.onclick = closeMvpPopup;
+
+  card.append(msg, who, ok);
+  wrap.appendChild(card);
+  wrap.onclick = e => { if(e.target === wrap) closeMvpPopup(); };
+  document.body.appendChild(wrap);
+  mvpPopTimer = setTimeout(closeMvpPopup, 20000);
+}
+document.addEventListener("keydown", e => { if(e.key === "Escape") closeMvpPopup(); });
+
 function myChannel(){
   for(const r of Object.keys(boards)){
     const chans = boards[r] || [];
@@ -1582,13 +1633,13 @@ socket.on("mvp", m => {
 
   mvpAlarm();
   flashTitle(line.slice(0, 40));
+  showMvpPopup(line, by);
   try {
     if(window.Notification && Notification.permission === "granted"){
       const n = new Notification(line, { body: by, requireInteraction: true });
       n.onclick = () => { window.focus(); stopFlash(); n.close(); };
     }
   } catch(e){}
-  toast(line + ", " + by);
 });
 
 socket.on("chatlog", arr => {
@@ -2624,6 +2675,26 @@ whoBtn.onclick = () => {
 };
 
 const mvpBtn = document.getElementById("mvpBtn");
+function paintMvpTimer(){
+  const b = document.getElementById("mvpTimerBtn");
+  if(!b) return;
+  if(!mvpTimer || !mvpTimer.endsAt){
+    b.textContent = "29:30";
+    b.classList.remove("running","soon");
+    b.title = "Start the 29:30 countdown";
+    return;
+  }
+  const left = Math.max(0, mvpTimer.endsAt - Date.now());
+  const total = Math.round(left / 1000);
+  const mm = String(Math.floor(total / 60)).padStart(2,"0");
+  const ss = String(total % 60).padStart(2,"0");
+  b.textContent = mm + ":" + ss;
+  b.classList.add("running");
+  b.classList.toggle("soon", left <= 60000);
+  b.title = "Started by " + (mvpTimer.by || "someone")
+    + "  ·  click to restart, right-click to stop";
+}
+
 function paintMvpTitle(){
   if(typeof mvpBtn === "undefined" || !mvpBtn) return;
   mvpBtn.title = (mvpMsg ? 'Alarm says: "' + mvpMsg + '"' : "Alarm everyone who's on a channel right now")
@@ -2643,6 +2714,23 @@ mvpBtn.addEventListener("touchstart", () => { mvpHold = setTimeout(editMvpMessag
 ["touchend","touchmove","touchcancel"].forEach(ev =>
   mvpBtn.addEventListener(ev, () => clearTimeout(mvpHold), { passive:true }));
 
+const mvpTimerBtn = document.getElementById("mvpTimerBtn");
+mvpTimerBtn.onclick = () => {
+  primeAudio();
+  send({ type:"mvptimer" });                 // start, or restart from the top
+};
+mvpTimerBtn.oncontextmenu = e => {
+  e.preventDefault();
+  if(mvpTimer) send({ type:"mvptimer", stop:true });
+};
+let timerHold = null;
+mvpTimerBtn.addEventListener("touchstart", () => {
+  timerHold = setTimeout(() => { if(mvpTimer) send({ type:"mvptimer", stop:true }) }, 600);
+}, { passive:true });
+["touchend","touchmove","touchcancel"].forEach(ev =>
+  mvpTimerBtn.addEventListener(ev, () => clearTimeout(timerHold), { passive:true }));
+paintMvpTimer();
+
 mvpBtn.onclick = () => {
   primeAudio();
   socket.emit("mvp", { by: me });
@@ -2651,40 +2739,9 @@ mvpBtn.onclick = () => {
 };
 paintMvpTitle();
 
+socket.on("mvptimer", t => { mvpTimer = t || null; paintMvpTimer(); });
+
 socket.on("mvpmsg", t => { mvpMsg = typeof t === "string" ? t : ""; paintMvpTitle(); });
-
-/* ---------------- announcements ---------------- */
-let notice = { text:"", by:"", at:0 };
-let hiddenNotice = "";
-try { hiddenNotice = localStorage.getItem("ct:noticehid") || "" } catch(e){}
-
-socket.on("notice", n => {
-  notice = (n && typeof n === "object") ? n : { text:"", by:"", at:0 };
-  renderNotice();
-});
-
-function renderNotice(){
-  const box = document.getElementById("notice");
-  if(!box) return;
-  const key = notice.at ? String(notice.at) : "";
-  if(!notice.text || hiddenNotice === key){ box.hidden = true; return; }
-  document.getElementById("noticeText").textContent = notice.text;
-  document.getElementById("noticeBy").textContent =
-    (notice.by ? notice.by + " · " : "") + ago(notice.at);
-  box.hidden = false;
-}
-
-document.getElementById("noticeHide").onclick = () => {
-  hiddenNotice = notice.at ? String(notice.at) : "";
-  try { localStorage.setItem("ct:noticehid", hiddenNotice) } catch(e){}
-  renderNotice();
-};
-
-document.getElementById("noticeBtn").onclick = () => {
-  const v = prompt("Notice for everyone (leave empty to clear):", notice.text || "");
-  if(v === null) return;
-  send({ type:"notice", text: v.trim().slice(0,240) });
-};
 
 const bgBtn = document.getElementById("bgBtn");
 let bgOn = true;
@@ -2859,10 +2916,7 @@ setInterval(() => {
   document.getElementById("refreshed").textContent =
     new Date().toISOString().slice(11,19) + " UTC";
   checkChannelTimers();
-  if(notice.text && !document.getElementById("notice").hidden){
-    document.getElementById("noticeBy").textContent =
-      (notice.by ? notice.by + " · " : "") + ago(notice.at);
-  }
+  paintMvpTimer();
   document.querySelectorAll(".ago").forEach(a => {
     const t = ago(+a.dataset.at);
     a.textContent = t.replace(" ago", "");

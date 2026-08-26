@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 const CHANNELS = 40;
 const CAP = 4;
 const LOG_MAX = 300;
+const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
 // Add a region here and it gets its own URL, its own board, its own chat.
 // Flip `enabled` to true when you're ready to open it up.
@@ -67,6 +68,7 @@ function hydrate(saved) {
   });
   if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
   if (typeof state.mvpMsg !== "string") state.mvpMsg = "";
+  if (!state.mvpTimer || typeof state.mvpTimer !== "object") state.mvpTimer = null;
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
@@ -124,6 +126,34 @@ function broadcast(region) {
 function broadcastChat() {
   io.emit("chatlog", state.chat);
 }
+let mvpTimerHandle = null;
+
+function fireMvpCall(by) {
+  io.emit("mvp", { by, t: Date.now(), msg: state.mvpMsg });
+}
+
+function scheduleMvpTimer() {
+  clearTimeout(mvpTimerHandle);
+  mvpTimerHandle = null;
+  if (!state.mvpTimer || !state.mvpTimer.endsAt) return;
+  const left = state.mvpTimer.endsAt - Date.now();
+  if (left <= 0) {                       // missed it while the server was down
+    state.mvpTimer = null;
+    persist();
+    io.emit("mvptimer", null);
+    return;
+  }
+  const by = state.mvpTimer.by || "timer";
+  mvpTimerHandle = setTimeout(() => {
+    state.mvpTimer = null;
+    persist();
+    io.emit("mvptimer", null);
+    fireMvpCall(by);
+    live.forEach(r => note(r, `MVP timer finished (started by ${by})`));
+    live.forEach(broadcast);
+  }, left);
+}
+
 function broadcastNotice() {
   io.emit("notice", state.notice);
 }
@@ -167,6 +197,7 @@ io.on("connection", socket => {
     socket.emit("roster", state.rosters);
     socket.emit("notice", state.notice);
     socket.emit("mvpmsg", state.mvpMsg);
+    socket.emit("mvptimer", state.mvpTimer);
     presence();
   });
 
@@ -333,6 +364,20 @@ io.on("connection", socket => {
         broadcastRoster();
         return;
       }
+      case "mvptimer": {
+        if (a.stop) {
+          state.mvpTimer = null;
+          note(region, `MVP timer stopped by ${by}`);
+        } else {
+          state.mvpTimer = { endsAt: Date.now() + MVP_TIMER_MS, by };
+          note(region, `MVP timer started by ${by}`);
+        }
+        persist();
+        scheduleMvpTimer();
+        io.emit("mvptimer", state.mvpTimer);
+        broadcast(region);
+        return;
+      }
       case "mvpmsg": {
         state.mvpMsg = clean(a.text, 140);
         note(region, state.mvpMsg
@@ -469,6 +514,7 @@ io.on("connection", socket => {
 async function main() {
   await storage.init();
   hydrate(await storage.load());
+  scheduleMvpTimer();
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Channel tracker on :${PORT} — open /${live[0].toLowerCase()}`);
   });
