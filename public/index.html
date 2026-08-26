@@ -259,7 +259,7 @@
   .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
   .movebar{
     display:grid;place-items:center;
-    width:calc(100% - 16px);margin:0 8px 9px;height:26px;padding:0;
+    width:calc(100% - 14px);margin:0 7px 7px;height:22px;padding:0;
     border-radius:7px;border:1px solid rgba(167,139,250,.5);
     background:linear-gradient(140deg,rgba(167,139,250,.18),rgba(236,72,153,.14));
     color:#c4b5fd;cursor:pointer;line-height:0;transition:.15s;
@@ -290,7 +290,7 @@
     50%    {transform:scale(1.14);box-shadow:0 0 18px 0 rgba(244,63,94,1)}
   }
   .durbtn{
-    width:19px;height:19px;flex:none;display:grid;place-items:center;padding:0;
+    width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);
     color:var(--amber);cursor:pointer;line-height:0;transition:.15s;
   }
@@ -322,7 +322,7 @@
   .ch.flash{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(34,211,238,.5)}
 
 /* ---------------- board ---------------- */
-  .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+  .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px}
   @media(max-width:1180px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
   @media(max-width:940px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
@@ -330,7 +330,7 @@
 
   .ch{
     background:linear-gradient(180deg,var(--panel-2),var(--panel));
-    border:1px solid var(--line);border-radius:10px;min-height:92px;
+    border:1px solid var(--line);border-radius:9px;min-height:76px;
     display:flex;flex-direction:column;
     transition:border-color .16s,box-shadow .16s,transform .16s;
   }
@@ -359,7 +359,7 @@
   .ch.dragging{opacity:.35}
 
   .ch-head{
-    display:flex;align-items:center;gap:9px;padding:10px 11px 9px;
+    display:flex;align-items:center;flex-wrap:nowrap;gap:6px;padding:8px 9px 7px;
     border-bottom:1px solid transparent;
   }
   .ch.occupied .ch-head,.ch.full .ch-head{border-bottom-color:var(--line-soft)}
@@ -370,7 +370,7 @@
   .handle:hover{opacity:1}
   .handle svg{width:11px;height:17px;display:block}
   .handle:active{cursor:grabbing}
-  .ch-name{font-size:12.5px;font-weight:700;letter-spacing:.1em;color:var(--label);white-space:nowrap;flex:none}
+  .ch-name{font-size:12px;font-weight:700;letter-spacing:.09em;color:var(--label);white-space:nowrap;flex:none}
   .ch.occupied .ch-name,.ch.full .ch-name{color:#fff}
 
   .pct{
@@ -378,7 +378,7 @@
     cursor:pointer;border:1px solid transparent;background:rgba(255,255,255,.05);
   }
   .pct:hover{filter:brightness(1.35)}
-  .count{font-size:11px;font-weight:700;color:var(--dim);flex:none}
+  .count{font-size:10.5px;font-weight:700;color:var(--dim);flex:none}
   .logfilter{display:inline-flex;gap:3px;margin-left:12px}
   .logfilter button{
     font:inherit;font-size:10px;font-weight:600;letter-spacing:.08em;
@@ -406,26 +406,26 @@
     box-shadow:0 12px 30px rgba(0,0,0,.6);
   }
   .audio-banner:hover{filter:brightness(1.08)}
-  .ago{font-size:11px;font-weight:600;color:var(--amber);white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .ago{font-size:10px;font-weight:600;color:var(--amber);white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .grow{flex:1 1 auto;min-width:0}
   .count.full{color:var(--red)}
 
   .icon{
-    width:20px;height:20px;flex:none;display:grid;place-items:center;padding:0;
+    width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
     font:inherit;font-size:11.5px;line-height:0;cursor:pointer;border-radius:6px;
     border:1px solid var(--line);background:var(--raise);color:var(--dim);transition:.15s;
   }
   .icon:hover{color:var(--text);border-color:#2d3f52}
-  .icon svg{width:12px;height:12px;display:block}
-  .add{width:22px;height:22px;font-size:14px;line-height:1;flex:none;padding:0 0 1px}
+  .icon svg{width:11px;height:11px;display:block}
+  .add{width:20px;height:20px;font-size:13px;line-height:1;flex:none;padding:0 0 1px}
   .add:hover{color:var(--cyan);border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
   .edit{border-color:rgba(34,211,238,.3);color:var(--cyan)}
   .edit:hover{background:rgba(34,211,238,.14);border-color:var(--cyan)}
   .del{border-color:rgba(239,68,68,.3);color:var(--red)}
   .del:hover{background:rgba(239,68,68,.14);border-color:var(--red)}
 
-  .rows{padding:7px 8px 8px;display:flex;flex-direction:column;gap:5px}
-  .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:#0c141d}
+  .rows{padding:6px 7px 7px;display:flex;flex-direction:column;gap:4px}
+  .row{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;background:#0c141d}
   .row:hover{background:rgba(255,255,255,.055)}
   .row.tinted,.chip.tinted{
     position:relative;overflow:hidden;border:0;
@@ -476,8 +476,8 @@
   }
   .row.dragging{opacity:.3}
   .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    font-family:var(--name-face);font-weight:600;font-size:13.5px;letter-spacing:.005em;cursor:grab}
-  .clock{font-size:11px;font-weight:600;color:var(--amber);cursor:pointer}
+    font-family:var(--name-face);font-weight:600;font-size:12.5px;letter-spacing:.005em;cursor:grab}
+  .clock{font-size:10.5px;font-weight:600;color:var(--amber);cursor:pointer}
   .clock.stale{color:var(--red)}
   .row input,.newrow input{
     font-family:var(--name-face);font-weight:600;font-size:13.5px;
