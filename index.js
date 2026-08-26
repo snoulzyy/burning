@@ -191,11 +191,36 @@ function musicView() {
 function broadcastMusic() {
   io.emit("music", musicView());
 }
+let songHandle = null;
+
 function startNext() {
   const next = state.music.queue.shift();
   state.music.playing = next
-    ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by, token: next.token, startedAt: Date.now() }
+    ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by,
+        token: next.token, startedAt: Date.now(), duration: next.duration || 0 }
     : null;
+  scheduleSongEnd();
+}
+
+// the server moves the queue along itself once it knows how long a song runs,
+// so nothing stalls just because nobody happens to be listening
+function scheduleSongEnd() {
+  clearTimeout(songHandle);
+  songHandle = null;
+  const cur = state.music.playing;
+  if (!cur || !cur.duration) return;
+  const left = cur.startedAt + cur.duration * 1000 + 2000 - Date.now();
+  if (left <= 0) {
+    startNext();
+    persist();
+    broadcastMusic();
+    return;
+  }
+  songHandle = setTimeout(() => {
+    startNext();
+    persist();
+    broadcastMusic();
+  }, left);
 }
 
 function broadcastNotice() {
@@ -445,6 +470,19 @@ io.on("connection", socket => {
         startNext();
         persist();
         broadcastMusic();
+        return;
+      }
+      case "music-duration": {
+        const secs = Math.max(0, Math.min(60 * 60 * 6, Math.round(Number(a.seconds))));
+        if (!secs) return;
+        if (state.music.playing && state.music.playing.id === a.id && !state.music.playing.duration) {
+          state.music.playing.duration = secs;
+          scheduleSongEnd();
+          persist();
+          broadcastMusic();
+        }
+        const q = state.music.queue.find(t => t.id === a.id);
+        if (q) q.duration = secs;
         return;
       }
       case "music-title": {

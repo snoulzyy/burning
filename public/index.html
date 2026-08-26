@@ -474,7 +474,7 @@
   .toast.warn{border-color:rgba(239,68,68,.7)}
   /* ---------------- music drawer ---------------- */
   .drawer{
-    position:fixed;right:14px;bottom:14px;z-index:100;width:min(330px,calc(100vw - 28px));
+    position:fixed;right:14px;bottom:14px;z-index:100;width:min(410px,calc(100vw - 28px));
     background:rgba(10,17,25,.97);backdrop-filter:blur(12px);
     border:1px solid rgba(34,211,238,.35);border-radius:14px;overflow:hidden;
     box-shadow:0 24px 60px rgba(0,0,0,.7);
@@ -504,24 +504,29 @@
   }
   .drawer-x:hover{color:var(--text)}
 
-  .now{padding:11px 12px;border-bottom:1px solid var(--line-soft)}
+  .now{position:relative;min-height:132px;padding:14px 14px;border-bottom:1px solid var(--line-soft);overflow:hidden}
+  .now > *{position:relative;z-index:1}
+  .drawer-art{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .drawer-art[hidden]{display:none}
+  .art-media{
+    position:absolute;inset:0;width:100%;height:100%;display:none;
+    object-fit:cover;background-size:cover;background-position:center;
+    opacity:.3;filter:saturate(1.1);
+  }
+  .art-still{background-repeat:no-repeat}
+  .drawer-art::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(10,17,25,.55),rgba(10,17,25,.8));
+  }
   .now-label{font-size:9px;letter-spacing:.18em;color:var(--dim);margin-bottom:5px}
   .now-title{
-    font-family:var(--name-face);font-size:13.5px;font-weight:700;color:var(--text);
+    font-family:var(--name-face);font-size:15px;font-weight:700;color:var(--text);
     line-height:1.3;word-break:break-word;
   }
   .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
-  .yt-holder iframe{display:block;width:100%;height:170px;border:0}
-  /* video wallpaper: the same player, stretched behind the page */
-  html.yt-bg .yt-holder{
-    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;
-    margin:0;border-radius:0;z-index:-4;pointer-events:none;opacity:var(--bgopacity,.7);
-  }
-  html.yt-bg .yt-holder iframe{width:100%;height:100%}
-  html.yt-bg .bgmedia{display:none !important}
+  .yt-holder iframe{display:block;width:100%;height:215px;border:0}
   .vol-row{display:flex;align-items:center;gap:8px;margin-top:9px}
   .vol-row[hidden]{display:none}
   .vol-ic{font-size:11px;color:var(--dim)}
@@ -535,7 +540,7 @@
   .drawer-add input:focus{outline:none;border-color:var(--cyan)}
   .drawer-add button{font-size:11px;padding:6px 12px}
 
-  .queue{max-height:220px;overflow-y:auto;padding:8px}
+  .queue{max-height:270px;overflow-y:auto;padding:8px}
   .queue::-webkit-scrollbar{width:7px}
   .queue::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .q-empty{padding:10px 6px;font-size:11.5px;color:var(--dim);text-align:center}
@@ -560,7 +565,9 @@
   .q-x svg{width:10px;height:10px;display:block}
   @media(max-width:700px){
     .drawer{right:8px;left:8px;bottom:8px;width:auto}
-    .yt-holder iframe{height:150px}
+    .yt-holder iframe{height:180px}
+    .now{min-height:112px}
+    .queue{max-height:200px}
   }
 
   /* ---------------- mvp popup ---------------- */
@@ -1015,12 +1022,16 @@
     </div>
 
     <div class="now" id="nowBox">
+      <div class="drawer-art" id="drawerArt" hidden>
+        <video id="artVideo" class="art-media" autoplay muted loop playsinline></video>
+        <div id="artStill" class="art-media art-still"></div>
+      </div>
       <div class="now-label">NOW PLAYING</div>
       <div class="now-title" id="nowTitle">nothing yet</div>
       <div class="now-by" id="nowBy"></div>
       <div class="yt-holder" id="ytHolder" hidden><div id="ytPlayer"></div></div>
       <div class="bgvid-row" id="bgvidRow" hidden>
-        <button class="ghost bgvid-btn" id="bgvidBtn" title="Use the playing video as the page background">video wallpaper: off</button>
+        <button class="ghost bgvid-btn" id="bgvidBtn" title="Show the artwork loop behind the queue">art: on</button>
       </div>
       <div class="vol-row" id="volRow" hidden>
         <span class="vol-ic">🔈</span>
@@ -1518,9 +1529,10 @@ const HELP_HTML = `
      in the drawer, and that choice is yours alone. Once it's on, playback carries on while
      you're on another tab or in game, and everyone listening is at roughly the same point
      in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
-  <p><span class="k">skip</span> moves everyone to the next song.
-     <span class="k">video wallpaper</span> stretches whatever is playing behind the whole
-     page instead of sitting in the little box — your choice, nobody else's.</p>
+  <p><span class="k">skip</span> moves everyone to the next song.</p>
+  <p>Drop a loop into <span class="k">public/img/</span> named <span class="k">music.mp4</span>
+     (or music.gif / music.png) and it plays quietly behind the queue as decoration. The
+     <span class="k">art</span> button turns it off for you if you'd rather not have it.</p>
 
   <h5>TIDYING THE TABS</h5>
   <p>The thin bar under the region tabs opens a list — tick the boards you care about,
@@ -1542,7 +1554,7 @@ const HELP_HTML = `
      don't get bothered.</p>
 
   <h5>40 MINUTE ALERT</h5>
-  <p>On RD1, RD2 and RD4 only: when someone on a channel hits 40 minutes, everyone
+  <p>On B1 and the RD boards: when someone on a channel hits 40 minutes, everyone
      <em>on that channel</em> gets a sound and a popup. Nobody else is bothered by it.
      The GOB boards don't do this at all.</p>
   <p>RD boards only — GOB1 and GOB5 never chime.</p>
@@ -3149,7 +3161,9 @@ soundBtn.onclick = () => {
    channel get the sound — everyone else hears nothing.
    -------------------------------------------------------------------------- */
 const CHANNEL_ALERT_MINUTES = 40;
-const ALERT_REGIONS = ["RD1", "RD2", "RD4"];   // GOB boards never chime
+// which areas get the 40 minute alert. keyed on area rather than board name,
+// so a new RD map is covered the moment it's added
+const ALERT_AREAS = ["B1", "RD"];
 const alertedChannels = new Set();      // "REGION:index" while a channel is over
 let timersPrimed = false;               // first pass just takes stock, silently
 
@@ -3167,7 +3181,7 @@ function checkChannelTimers(){
   const now = Date.now();
   const priming = !timersPrimed;
   Object.keys(boards).forEach(r => {
-    if(!ALERT_REGIONS.includes(r)) return;
+    if(!ALERT_AREAS.includes(areaOf[r])) return;   // GOB boards stay quiet
     (boards[r] || []).forEach((c, idx) => {
       const key = r + ":" + idx;
       const over = c.entries.some(e => now - e.at >= limit);
@@ -3335,7 +3349,7 @@ function paintListen(){
   listenBtn.classList.toggle("on", listening);
   document.getElementById("ytHolder").hidden = !listening;
   document.getElementById("volRow").hidden = !listening;
-  if(typeof paintVidWall === "function") paintVidWall();
+  if(typeof paintArt === "function") paintArt();
 }
 
 document.getElementById("skipBtn").onclick = () => {
@@ -3343,22 +3357,53 @@ document.getElementById("skipBtn").onclick = () => {
   socket.emit("action", { type:"music-skip", region });
 };
 
-// use whatever is playing as the page background, per browser
-let vidWall = false;
-try { vidWall = localStorage.getItem("ct:vidwall") === "on" } catch(e){}
+// a little looping artwork behind the queue — pure decoration, your choice
+let artOn = true;
+try { artOn = localStorage.getItem("ct:drawerart") !== "off" } catch(e){}
+let artFound = false;
 const bgvidBtn = document.getElementById("bgvidBtn");
-function paintVidWall(){
-  const on = vidWall && listening;
-  document.documentElement.classList.toggle("yt-bg", on);
-  bgvidBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
-  bgvidBtn.classList.toggle("on", vidWall);
-  document.getElementById("bgvidRow").hidden = !listening;
+
+function paintArt(){
+  const row = document.getElementById("bgvidRow");
+  const art = document.getElementById("drawerArt");
+  if(row) row.hidden = !artFound;
+  if(art) art.hidden = !(artFound && artOn);
+  bgvidBtn.textContent = artOn ? "art: on" : "art: off";
+  bgvidBtn.classList.toggle("on", artOn);
+  const v = document.getElementById("artVideo");
+  if(v){ (artFound && artOn) ? v.play().catch(() => {}) : v.pause(); }
 }
 bgvidBtn.onclick = () => {
-  vidWall = !vidWall;
-  try { localStorage.setItem("ct:vidwall", vidWall ? "on" : "off") } catch(e){}
-  paintVidWall();
+  artOn = !artOn;
+  try { localStorage.setItem("ct:drawerart", artOn ? "on" : "off") } catch(e){}
+  paintArt();
 };
+
+/* Drop a loop into public/img/ and it shows behind the queue:
+     music.mp4 / music.webm, or music.gif / music.png / music.jpg / music.webp */
+(function(){
+  const vid = document.getElementById("artVideo");
+  const still = document.getElementById("artStill");
+  const videos = ["/img/music.mp4", "/img/music.webm"];
+  const stills = ["/img/music.gif", "/img/music.webp", "/img/music.png", "/img/music.jpg"];
+  const found = el => { el.style.display = "block"; artFound = true; paintArt(); };
+
+  function tryStills(i){
+    if(i >= stills.length) return;
+    const probe = new Image();
+    probe.onload = () => { still.style.backgroundImage = "url('" + stills[i] + "')"; found(still); };
+    probe.onerror = () => tryStills(i + 1);
+    probe.src = stills[i];
+  }
+  function tryVideos(i){
+    if(i >= videos.length) return tryStills(0);
+    vid.onloadeddata = () => found(vid);
+    vid.onerror = () => tryVideos(i + 1);
+    vid.src = videos[i];
+    vid.load();
+  }
+  tryVideos(0);
+})();
 
 const volRange = document.getElementById("volRange");
 volRange.value = musicVol;
@@ -3445,31 +3490,48 @@ function ensurePlayer(){
         if(e.data === window.YT.PlayerState.ENDED && music.playing){
           socket.emit("action", { type:"music-ended", id: music.playing.id, region });
         }
-        if(e.data === window.YT.PlayerState.PLAYING) reportTitle();
+        if(e.data === window.YT.PlayerState.PLAYING){ reportTitle(); reportDuration(); }
       },
       onError: () => {
-        // rebuild once, then move on rather than sitting on a dead player
+        // one clean rebuild, then move on rather than sitting on a dead player
         const cur = music.playing;
-        stopPlayer();
-        if(listening) setTimeout(() => { ensurePlayer(); syncPlayer(); }, 400);
+        killPlayer();
+        if(listening) setTimeout(() => { ensurePlayer(); syncPlayer(); }, 500);
         if(cur) setTimeout(() => {
           if(music.playing && music.playing.id === cur.id && ytWanted !== cur.id){
             socket.emit("action", { type:"music-ended", id: cur.id, region });
           }
-        }, 4000);
+        }, 5000);
       }
     }
   });
 }
+// tearing the player down and rebuilding it was what kept jamming YouTube,
+// so it stays alive and simply stops
 function stopPlayer(){
-  if(ytPlayer && ytPlayer.destroy){
-    try { ytPlayer.destroy() } catch(e){}
-  }
+  ytWanted = null;
+  if(!ytPlayer) return;
+  try { if(ytPlayer.stopVideo) ytPlayer.stopVideo(); } catch(e){}
+}
+// only used if YouTube itself falls over
+function killPlayer(){
+  try { if(ytPlayer && ytPlayer.destroy) ytPlayer.destroy(); } catch(e){}
   ytPlayer = null; ytWanted = null;
-  // destroy() takes the mount point with it, so put a fresh one back
   const holder = document.getElementById("ytHolder");
   if(holder) holder.innerHTML = '<div id="ytPlayer"></div>';
 }
+let durSent = {};
+function reportDuration(){
+  const cur = music.playing;
+  if(!cur || !ytPlayer || !ytPlayer.getDuration) return;
+  if(durSent[cur.id]) return;
+  const d = Math.round(ytPlayer.getDuration());
+  if(d > 0){
+    durSent[cur.id] = true;
+    socket.emit("action", { type:"music-duration", id: cur.id, seconds: d, region });
+  }
+}
+
 function reportTitle(){
   const cur = music.playing;
   if(!cur || !ytPlayer || !ytPlayer.getVideoData) return;
@@ -3491,6 +3553,10 @@ function syncPlayer(){
     return;
   }
   const offset = Math.max(0, Math.floor((Date.now() - cur.startedAt) / 1000));
+  if(cur.duration && offset >= cur.duration - 1){
+    socket.emit("action", { type:"music-ended", id: cur.id, region });   // we're past the end
+    return;
+  }
   if(ytWanted !== cur.id){
     ytWanted = cur.id;
     if(ytPlayer.loadVideoById) ytPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: offset });
