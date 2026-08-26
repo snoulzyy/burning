@@ -485,6 +485,8 @@
     border-bottom:1px solid var(--line-soft);
   }
   .drawer-title{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan)}
+  .listeners{font-size:10px;color:var(--dim);white-space:nowrap}
+  .listeners.some{color:#c4b5fd}
   .listen-btn{margin-left:auto;font-size:10.5px;padding:5px 10px}
   .skip-btn{font-size:10.5px;padding:5px 10px}
   .bgvid-row{margin-top:9px}
@@ -532,17 +534,17 @@
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
   .yt-holder iframe{display:block;width:100%;height:215px;border:0}
-  /* video wallpaper: the same player, blown up behind the page */
-  html.yt-bg .yt-holder{
-    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;
-    margin:0;border-radius:0;z-index:-4;pointer-events:none;opacity:var(--bgopacity,.7);
-  }
-  html.yt-bg .yt-holder iframe{width:100%;height:100%}
-  html.yt-bg .bgmedia{display:none !important}
   /* let it read through the queue too, so the little box shows it as well */
+  /* video wallpaper: a second, muted player sitting behind the whole page */
+  .ytbg{position:fixed;inset:0;z-index:-4;pointer-events:none;overflow:hidden}
+  .ytbg[hidden]{display:none}
+  .ytbg iframe{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;border:0;
+    opacity:var(--bgopacity,.7);
+  }
+  html.yt-bg .bgmedia{display:none !important}
   html.yt-bg .drawer{background:rgba(10,17,25,.62)}
-  html.yt-bg .now{background:transparent}
   .vol-row{display:flex;align-items:center;gap:8px;margin-top:9px}
   .vol-row[hidden]{display:none}
   .vol-ic{font-size:11px;color:var(--dim)}
@@ -741,6 +743,7 @@
   .log .t{color:#42566a}
   .log .src{color:var(--cyan);font-weight:700}
   .log .src.user{color:var(--green)}
+  .log .src.musicsrc{color:#c4b5fd;letter-spacing:.08em}
   .log .sep{color:#3a4c5e}
   .log .msg{color:#a9bcce}
   .log .empty{color:var(--dim)}
@@ -955,6 +958,7 @@
 <body>
 <video class="bgmedia" id="bgVideo" autoplay muted loop playsinline aria-hidden="true"></video>
 <div class="bgmedia" id="bgStill" aria-hidden="true"></div>
+<div class="ytbg" id="ytBg" aria-hidden="true" hidden><div id="ytBgPlayer"></div></div>
 <div class="sheen" aria-hidden="true"></div>
 <div class="sticker-layer" id="stickerLayer" aria-hidden="true"></div>
 <div class="wrap">
@@ -1032,6 +1036,7 @@
   <aside class="drawer" id="drawer" hidden>
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
+      <span class="listeners" id="listenCount" title="People with the music on right now">0 listening</span>
       <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
       <button class="ghost skip-btn" id="skipBtn" title="Skip to the next song">skip</button>
       <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
@@ -1736,6 +1741,7 @@ function toast(msg, warn){
 
 /* ---------------- socket ---------------- */
 socket.on("connect", () => {
+  setTimeout(() => { if(typeof tellListening === "function") tellListening(); }, 300);
   document.getElementById("conn").classList.remove("off");
   document.getElementById("connText").textContent = "live";
   socket.emit("join", region);
@@ -2943,7 +2949,8 @@ function paintLog(el, items, emptyMsg){
     line.innerHTML = '<span class="t"></span> <span class="src"></span> <span class="sep">:</span> <span class="msg"></span>';
     line.querySelector(".t").textContent = "[" + stamp(item.t) + "]";
     const src = line.querySelector(".src");
-    src.textContent = item.who ? item.who : region + " System";
+    src.textContent = item.who ? item.who : (item.sys === "music" ? "MUSIC" : region + " System");
+    if(item.sys === "music") src.classList.add("musicsrc");
     if(item.who){
       src.classList.add("user");
       const col = colorByName[item.who.trim().toLowerCase()];
@@ -3332,6 +3339,23 @@ if(!isFinite(musicVol)) musicVol = 35;
 
 let ytPlayer = null, ytReady = false, ytWanted = null, titleSent = {};
 
+let listenerCount = 0;
+socket.on("listeners", n => {
+  listenerCount = (typeof n === "number") ? n : 0;
+  paintListeners();
+});
+function paintListeners(){
+  const el = document.getElementById("listenCount");
+  if(!el) return;
+  el.textContent = listenerCount + " listening";
+  el.classList.toggle("some", listenerCount > 0);
+  const btn = document.getElementById("musicBtn");
+  if(btn) btn.textContent = listenerCount > 0 ? "♪ music · " + listenerCount : "♪ music";
+}
+function tellListening(){
+  socket.emit("listening", listening);
+}
+
 socket.on("music", m => {
   const before = music.playing && music.playing.id;
   music = (m && typeof m === "object") ? m : { queue: [], playing: null };
@@ -3366,6 +3390,7 @@ listenBtn.onclick = () => {
   listening = !listening;
   try { localStorage.setItem("ct:listen", listening ? "on" : "off") } catch(e){}
   paintListen();
+  tellListening();
   if(listening) ensurePlayer(); else stopPlayer();
   syncPlayer();
 };
@@ -3378,8 +3403,7 @@ function paintListen(){
 }
 
 document.getElementById("skipBtn").onclick = () => {
-  if(!music.playing) return;
-  socket.emit("action", { type:"music-skip", region });
+  socket.emit("action", { type:"music-skip", region });   // server checks if there's anything to skip
 };
 
 // the playing video, stretched across the whole page. per browser, off by default.
@@ -3387,16 +3411,70 @@ let vidWall = false;
 try { vidWall = localStorage.getItem("ct:vidwall") === "on" } catch(e){}
 const wallBtn = document.getElementById("wallBtn");
 
+let ytBgPlayer = null, ytBgVideo = null;
+
+// the drawer is a fixed, clipped panel, so its player can never sit behind the
+// page. a second muted player outside it does the job, kept in step with the first.
+function ensureBgPlayer(){
+  if(ytBgPlayer || !window.YT || !window.YT.Player) return;
+  const box = document.getElementById("ytBg");
+  if(!box) return;
+  if(!document.getElementById("ytBgPlayer")) box.innerHTML = '<div id="ytBgPlayer"></div>';
+  ytBgPlayer = new window.YT.Player("ytBgPlayer", {
+    height:"100%", width:"100%",
+    playerVars:{ autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1,
+                 mute:1, disablekb:1, fs:0, iv_load_policy:3 },
+    events:{
+      onReady: () => { try { ytBgPlayer.mute(); } catch(e){} syncBgPlayer(); },
+      onError: () => { killBgPlayer(); }
+    }
+  });
+}
+function killBgPlayer(){
+  try { if(ytBgPlayer && ytBgPlayer.destroy) ytBgPlayer.destroy(); } catch(e){}
+  ytBgPlayer = null; ytBgVideo = null;
+  const box = document.getElementById("ytBg");
+  if(box) box.innerHTML = '<div id="ytBgPlayer"></div>';
+}
+function syncBgPlayer(){
+  const on = vidWall && listening;
+  const box = document.getElementById("ytBg");
+  if(box) box.hidden = !on;
+  if(!on){ if(ytBgPlayer) killBgPlayer(); return; }
+  if(!ytBgPlayer){ ensureBgPlayer(); return; }
+  const cur = music.playing;
+  if(!cur){
+    try { if(ytBgPlayer.stopVideo) ytBgPlayer.stopVideo(); } catch(e){}
+    ytBgVideo = null;
+    return;
+  }
+  const want = expectedOffset(cur);
+  if(ytBgVideo !== cur.videoId){
+    ytBgVideo = cur.videoId;
+    try {
+      ytBgPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: Math.floor(want) });
+      ytBgPlayer.mute();
+    } catch(e){}
+    return;
+  }
+  try {
+    if(ytBgPlayer.getCurrentTime && Math.abs(ytBgPlayer.getCurrentTime() - want) > 3){
+      ytBgPlayer.seekTo(want, true);
+    }
+  } catch(e){}
+}
+
 function paintWall(){
   const on = vidWall && listening;
   document.documentElement.classList.toggle("yt-bg", on);
   wallBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
   wallBtn.classList.toggle("on", vidWall);
   document.getElementById("wallRow").hidden = !listening;
-  // the little player is only on show when it's acting as the wallpaper;
-  // otherwise it plays out of sight and the artwork keeps the box
+  // never display:none the player — that stops playback dead.
+  // it lives in the box, and only moves to the background when asked.
   const holder = document.getElementById("ytHolder");
-  if(holder) holder.hidden = !on;
+  if(holder) holder.hidden = !listening;
+  syncBgPlayer();
 }
 wallBtn.onclick = () => {
   vidWall = !vidWall;
@@ -3414,13 +3492,14 @@ const bgvidBtn = document.getElementById("bgvidBtn");
 function paintArt(){
   const row = document.getElementById("bgvidRow");
   const art = document.getElementById("drawerArt");
-  const wallOn = vidWall && listening;          // the video has the box while it's the wallpaper
-  if(row) row.hidden = !artFound || wallOn;
-  if(art) art.hidden = !(artFound && artOn) || wallOn;
+  // the player owns the box while you're listening, so the artwork waits its turn
+  const busy = listening;
+  if(row) row.hidden = !artFound || busy;
+  if(art) art.hidden = !(artFound && artOn) || busy;
   bgvidBtn.textContent = artOn ? "art: on" : "art: off";
   bgvidBtn.classList.toggle("on", artOn);
   const v = document.getElementById("artVideo");
-  if(v){ (artFound && artOn && !wallOn) ? v.play().catch(() => {}) : v.pause(); }
+  if(v){ (artFound && artOn && !busy) ? v.play().catch(() => {}) : v.pause(); }
 }
 bgvidBtn.onclick = () => {
   artOn = !artOn;
@@ -3622,8 +3701,11 @@ function syncPlayer(){
     lastPos = null;
     if(ytPlayer.loadVideoById) ytPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: Math.floor(want) });
     setTimeout(() => { reportTitle(); reportDuration(); }, 1200);
+    syncBgPlayer();
     return;
   }
+
+  syncBgPlayer();
 
   // same song: if we've drifted from the shared clock, catch up
   try {
@@ -3659,6 +3741,8 @@ setInterval(() => {
 }, 1000);
 paintListen();
 paintWall();
+paintListeners();
+tellListening();
 if(listening) ensurePlayer();
 
 /* ---------------- clocks ---------------- */

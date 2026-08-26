@@ -75,7 +75,9 @@ function hydrate(saved) {
   // but the queue itself survives
   if (!state.music || typeof state.music !== "object") state.music = { queue: [], playing: null };
   if (!Array.isArray(state.music.queue)) state.music.queue = [];
-  state.music.playing = null;
+  // whatever was playing carries on across a restart, picked up from where it got to
+  const cur = state.music.playing;
+  if (cur && (typeof cur.startedAt !== "number" || !cur.videoId)) state.music.playing = null;
   if (!state.mvpTimer || typeof state.mvpTimer !== "object") state.mvpTimer = null;
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
@@ -123,7 +125,8 @@ function offline(id) {
 }
 
 /* ---------------- realtime ---------------- */
-let online = 0;   // everyone connected, whichever region they're looking at
+let online = 0;      // everyone connected, whichever region they're looking at
+let listeners = 0;   // how many of them have the music playing
 
 function snapshot(region) {
   return { region, channels: state[region].channels, log: state[region].log };
@@ -190,6 +193,12 @@ function musicView() {
 }
 function broadcastMusic() {
   io.emit("music", musicView());
+}
+// music happens everywhere at once, so it belongs in the shared stream
+function musicNote(msg) {
+  state.chat.push({ t: Date.now(), who: null, sys: "music", msg });
+  if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
+  broadcastChat();
 }
 let songHandle = null;
 
@@ -268,6 +277,7 @@ io.on("connection", socket => {
     socket.emit("mvpmsg", state.mvpMsg);
     socket.emit("mvptimer", state.mvpTimer);
     socket.emit("music", musicView());
+    socket.emit("listeners", listeners);
     presence();
   });
 
@@ -442,7 +452,7 @@ io.on("connection", socket => {
         const item = { id: uid(), videoId, title: "", by, token, at: Date.now() };
         state.music.queue.push(item);
         if (!state.music.playing) startNext();
-        note(region, `queued a song`, null);
+        musicNote(`${by} queued a song`);
         persist();
         broadcastMusic();
         broadcast(region);
@@ -467,6 +477,7 @@ io.on("connection", socket => {
       }
       case "music-skip": {
         if (!state.music.playing) return;
+        musicNote(`${by} skipped a song`);
         startNext();
         persist();
         broadcastMusic();
@@ -500,7 +511,11 @@ io.on("connection", socket => {
       case "music-title": {
         const title = clean(a.title, 120);
         if (!title) return;
-        if (state.music.playing && state.music.playing.id === a.id) state.music.playing.title = title;
+        if (state.music.playing && state.music.playing.id === a.id) {
+          const first = !state.music.playing.title;
+          state.music.playing.title = title;
+          if (first) musicNote(`now playing: ${title} — added by ${state.music.playing.by}`);
+        }
         const q = state.music.queue.find(t => t.id === a.id);
         if (q) q.title = title;
         persist();
@@ -632,6 +647,16 @@ io.on("connection", socket => {
 
   // "MVP is up" — one shout that reaches anyone currently on a channel, any board
   let lastMvp = 0;
+  // whether this browser currently has the queue playing
+  let isListening = false;
+  socket.on("listening", v => {
+    const on = !!v;
+    if (on === isListening) return;
+    isListening = on;
+    listeners = Math.max(0, listeners + (on ? 1 : -1));
+    io.emit("listeners", listeners);
+  });
+
   socket.on("mvp", m => {
     if (!viewing) return;
     const now = Date.now();
@@ -656,6 +681,11 @@ io.on("connection", socket => {
   });
 
   socket.on("disconnect", () => {
+    if (isListening) {
+      isListening = false;
+      listeners = Math.max(0, listeners - 1);
+      io.emit("listeners", listeners);
+    }
     if (!viewing) return;
     online = Math.max(0, online - 1);
     presence();
@@ -666,6 +696,7 @@ async function main() {
   await storage.init();
   hydrate(await storage.load());
   scheduleMvpTimer();
+  scheduleSongEnd();
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Channel tracker on :${PORT} — open /${live[0].toLowerCase()}`);
   });
