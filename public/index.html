@@ -2712,18 +2712,49 @@ function checkChannelTimers(){
   });
 })();
 
-// belt and braces: ask every couple of minutes whether a newer build is out
-setInterval(async () => {
-  if(updatePending || !myBuild) return;
+/* Watch for a new deploy without needing anything from the server.
+   Two ways, whichever works:
+     1. /version, if the server is new enough to serve it
+     2. the page's own ETag / Last-Modified, which every static server sends
+   ------------------------------------------------------------------ */
+let pageTag = null;
+
+async function fetchTag(){
+  try {
+    const r = await fetch(location.pathname, { method: "HEAD", cache: "no-store" });
+    return r.headers.get("etag") || r.headers.get("last-modified") || null;
+  } catch(e){ return null; }
+}
+
+async function checkForUpdate(){
+  if(updatePending) return;
+
+  // the server's own build number, when it has one
   try {
     const r = await fetch("/version", { cache: "no-store" });
-    const d = await r.json();
-    if(d.build && d.build !== myBuild){
-      updatePending = true;
-      offerReload();
+    if(r.ok){
+      const d = await r.json();
+      if(d && d.build){
+        if(myBuild && d.build !== myBuild){ updatePending = true; offerReload(); }
+        myBuild = myBuild || d.build;
+        return;
+      }
     }
   } catch(e){}
-}, 120000);
+
+  // otherwise watch the file itself change
+  const tag = await fetchTag();
+  if(!tag) return;
+  if(pageTag && tag !== pageTag){ updatePending = true; offerReload(); return; }
+  pageTag = pageTag || tag;
+}
+
+// note where we started, then keep an eye out
+checkForUpdate();
+setInterval(checkForUpdate, 45000);
+// and check the moment someone comes back to the tab
+document.addEventListener("visibilitychange", () => { if(!document.hidden) checkForUpdate(); });
+socket.on("connect", () => setTimeout(checkForUpdate, 800));
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
