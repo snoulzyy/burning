@@ -533,6 +533,12 @@
   .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
+  /* out of sight but still rendering, so the audio carries on */
+  .yt-holder.tucked{
+    position:absolute;left:-9999px;top:auto;width:2px;height:2px;
+    margin:0;opacity:.01;pointer-events:none;overflow:hidden;
+  }
+  .yt-holder.tucked iframe{width:2px;height:2px}
   .yt-holder iframe{display:block;width:100%;height:215px;border:0}
   /* let it read through the queue too, so the little box shows it as well */
   /* video wallpaper: a second, muted player sitting behind the whole page */
@@ -3470,10 +3476,14 @@ function paintWall(){
   wallBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
   wallBtn.classList.toggle("on", vidWall);
   document.getElementById("wallRow").hidden = !listening;
-  // never display:none the player — that stops playback dead.
-  // it lives in the box, and only moves to the background when asked.
+  // never display:none the player — that stops playback dead. when the artwork
+  // has the box, the player shrinks out of sight and keeps going.
   const holder = document.getElementById("ytHolder");
-  if(holder) holder.hidden = !listening;
+  if(holder){
+    holder.hidden = !listening;
+    const artHasBox = artFound && artOn;
+    holder.classList.toggle("tucked", listening && artHasBox);
+  }
   syncBgPlayer();
 }
 wallBtn.onclick = () => {
@@ -3492,14 +3502,14 @@ const bgvidBtn = document.getElementById("bgvidBtn");
 function paintArt(){
   const row = document.getElementById("bgvidRow");
   const art = document.getElementById("drawerArt");
-  // the player owns the box while you're listening, so the artwork waits its turn
-  const busy = listening;
-  if(row) row.hidden = !artFound || busy;
-  if(art) art.hidden = !(artFound && artOn) || busy;
+  // the artwork keeps the box for good — it never stops for the player
+  if(row) row.hidden = !artFound;
+  if(art) art.hidden = !(artFound && artOn);
   bgvidBtn.textContent = artOn ? "art: on" : "art: off";
   bgvidBtn.classList.toggle("on", artOn);
   const v = document.getElementById("artVideo");
-  if(v){ (artFound && artOn && !busy) ? v.play().catch(() => {}) : v.pause(); }
+  if(v){ (artFound && artOn) ? v.play().catch(() => {}) : v.pause(); }
+  if(typeof paintWall === "function") paintWall();   // the player may need to tuck or come back
 }
 bgvidBtn.onclick = () => {
   artOn = !artOn;
