@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+const fs = require("fs");
 const express = require("express");
 const http = require("http");
 const path = require("path");
@@ -23,6 +25,15 @@ const AREAS = [...new Set(REGIONS.filter(r => r.enabled).map(r => r.area))];
 const areaOf = id => (byId(id) || {}).area;
 const regionsIn = area => live.filter(r => areaOf(r) === area);
 const live = REGIONS.filter(r => r.enabled).map(r => r.id);
+
+// fingerprint of the client file, so open browsers can tell when a deploy has landed
+let BUILD = "dev";
+try {
+  const page = fs.readFileSync(path.join(__dirname, "public", "index.html"));
+  BUILD = crypto.createHash("sha1").update(page).digest("hex").slice(0, 12);
+} catch (e) {
+  BUILD = String(Date.now());
+}
 const byId = id => REGIONS.find(r => r.id === id);
 
 /* ---------------- state ---------------- */
@@ -76,6 +87,8 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
+
+app.get("/version", (_req, res) => res.json({ build: BUILD }));
 
 app.get("/", (_req, res) => res.redirect("/" + live[0].toLowerCase()));
 
@@ -143,7 +156,7 @@ io.on("connection", socket => {
     if (!viewing) online++;          // count the person once, not once per tab switch
     viewing = id;
 
-    socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS });
+    socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS, build: BUILD });
     live.forEach(x => socket.emit("sync", snapshot(x)));
     socket.emit("chatlog", state.chat);
     socket.emit("roster", state.rosters);

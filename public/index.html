@@ -399,6 +399,13 @@
     box-shadow:0 12px 34px rgba(0,0,0,.7);max-width:calc(100% - 24px);
   }
   .toast.warn{border-color:rgba(239,68,68,.7)}
+  .update-bar{
+    position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:95;
+    font:inherit;font-size:12px;font-weight:700;color:#04202a;cursor:pointer;
+    background:var(--cyan);border:0;border-radius:999px;padding:9px 16px;
+    box-shadow:0 12px 30px rgba(0,0,0,.6);
+  }
+  .update-bar:hover{filter:brightness(1.08)}
   .audio-banner{
     position:fixed;left:50%;bottom:62px;transform:translateX(-50%);z-index:90;
     font:inherit;font-size:12px;font-weight:600;color:#04202a;cursor:pointer;
@@ -688,6 +695,17 @@
   /* a touch more contrast under the text, since the video moves behind it */
   html.has-bg .wrap{text-shadow:0 1px 2px rgba(0,0,0,.45)}
   html.has-bg .bgmedia{opacity:.7}
+  /* stills get a slow drift so they don't look like a frozen screenshot */
+  #bgStill{
+    animation:stillDrift 48s ease-in-out infinite alternate;
+    will-change:transform;
+  }
+  @keyframes stillDrift{
+    from{transform:scale(1.04) translate3d(-1%,-.6%,0)}
+    to  {transform:scale(1.1)  translate3d(1.2%,.8%,0)}
+  }
+  @media(prefers-reduced-motion:reduce){#bgStill{animation:none}}
+  html.bg-off #bgStill{animation:none}
   /* switched off locally: media hidden, panels go solid again */
   html.bg-off .bgmedia{display:none !important}
   html.bg-off.has-bg .ch,
@@ -1400,7 +1418,37 @@ socket.on("disconnect", () => {
 });
 socket.on("denied", msg => { document.getElementById("connText").textContent = msg });
 
+let myBuild = null;
+let updatePending = false;
+
+function offerReload(){
+  if(document.getElementById("updateBar")) return;
+  const b = document.createElement("button");
+  b.id = "updateBar";
+  b.className = "update-bar";
+  b.textContent = "New version — click to update";
+  b.onclick = () => location.reload();
+  document.body.appendChild(b);
+
+  // reload on its own, but not while someone is mid-edit
+  const tryReload = () => {
+    if(editing || document.querySelector(".pctmenu,.nextmenu,.durmenu,.colmenu,.picker,.modal")){
+      setTimeout(tryReload, 3000);
+      return;
+    }
+    location.reload();
+  };
+  setTimeout(tryReload, 4000);
+}
+
 socket.on("hello", info => {
+  if(info.build){
+    if(myBuild && info.build !== myBuild && !updatePending){
+      updatePending = true;
+      offerReload();
+    }
+    myBuild = myBuild || info.build;
+  }
   region = info.region;
   regionList = info.regions;
   areaOf = {};
@@ -2663,6 +2711,19 @@ function checkChannelTimers(){
     if(document.hidden) vid.pause(); else vid.play().catch(() => {});
   });
 })();
+
+// belt and braces: ask every couple of minutes whether a newer build is out
+setInterval(async () => {
+  if(updatePending || !myBuild) return;
+  try {
+    const r = await fetch("/version", { cache: "no-store" });
+    const d = await r.json();
+    if(d.build && d.build !== myBuild){
+      updatePending = true;
+      offerReload();
+    }
+  } catch(e){}
+}, 120000);
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
