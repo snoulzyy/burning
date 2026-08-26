@@ -440,6 +440,13 @@ io.on("connection", socket => {
         broadcastMusic();
         return;
       }
+      case "music-skip": {
+        if (!state.music.playing) return;
+        startNext();
+        persist();
+        broadcastMusic();
+        return;
+      }
       case "music-title": {
         const title = clean(a.title, 120);
         if (!title) return;

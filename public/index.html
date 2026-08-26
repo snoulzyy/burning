@@ -486,7 +486,18 @@
   }
   .drawer-title{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan)}
   .listen-btn{margin-left:auto;font-size:10.5px;padding:5px 10px}
-  .listen-btn.on{color:#04202a;background:var(--cyan);border-color:var(--cyan);font-weight:800}
+  .skip-btn{font-size:10.5px;padding:5px 10px}
+  .bgvid-row{margin-top:9px}
+  .bgvid-row[hidden]{display:none}
+  .bgvid-btn{width:100%;font-size:10.5px;padding:6px 10px}
+  .listen-btn.on,
+  html.has-bg .listen-btn.on{
+    color:#04202a;background:var(--cyan);border-color:var(--cyan);font-weight:800;
+  }
+  .bgvid-btn.on,
+  html.has-bg .bgvid-btn.on{
+    color:#04202a;background:#a78bfa;border-color:#a78bfa;font-weight:800;
+  }
   .drawer-x{
     font:inherit;font-size:12px;line-height:1;color:var(--dim);
     background:none;border:0;cursor:pointer;padding:2px 3px;
@@ -503,6 +514,14 @@
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
   .yt-holder iframe{display:block;width:100%;height:170px;border:0}
+  /* video wallpaper: the same player, stretched behind the page */
+  html.yt-bg .yt-holder{
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;
+    margin:0;border-radius:0;z-index:-4;pointer-events:none;opacity:var(--bgopacity,.7);
+  }
+  html.yt-bg .yt-holder iframe{width:100%;height:100%}
+  html.yt-bg .bgmedia{display:none !important}
   .vol-row{display:flex;align-items:center;gap:8px;margin-top:9px}
   .vol-row[hidden]{display:none}
   .vol-ic{font-size:11px;color:var(--dim)}
@@ -991,6 +1010,7 @@
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
       <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
+      <button class="ghost skip-btn" id="skipBtn" title="Skip to the next song">skip</button>
       <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
     </div>
 
@@ -999,6 +1019,9 @@
       <div class="now-title" id="nowTitle">nothing yet</div>
       <div class="now-by" id="nowBy"></div>
       <div class="yt-holder" id="ytHolder" hidden><div id="ytPlayer"></div></div>
+      <div class="bgvid-row" id="bgvidRow" hidden>
+        <button class="ghost bgvid-btn" id="bgvidBtn" title="Use the playing video as the page background">video wallpaper: off</button>
+      </div>
       <div class="vol-row" id="volRow" hidden>
         <span class="vol-ic">🔈</span>
         <input class="bgrange volrange" id="volRange" type="range" min="0" max="100" step="1" value="35" aria-label="Music volume">
@@ -1495,6 +1518,9 @@ const HELP_HTML = `
      in the drawer, and that choice is yours alone. Once it's on, playback carries on while
      you're on another tab or in game, and everyone listening is at roughly the same point
      in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
+  <p><span class="k">skip</span> moves everyone to the next song.
+     <span class="k">video wallpaper</span> stretches whatever is playing behind the whole
+     page instead of sitting in the little box — your choice, nobody else's.</p>
 
   <h5>TIDYING THE TABS</h5>
   <p>The thin bar under the region tabs opens a list — tick the boards you care about,
@@ -3309,7 +3335,30 @@ function paintListen(){
   listenBtn.classList.toggle("on", listening);
   document.getElementById("ytHolder").hidden = !listening;
   document.getElementById("volRow").hidden = !listening;
+  if(typeof paintVidWall === "function") paintVidWall();
 }
+
+document.getElementById("skipBtn").onclick = () => {
+  if(!music.playing) return;
+  socket.emit("action", { type:"music-skip", region });
+};
+
+// use whatever is playing as the page background, per browser
+let vidWall = false;
+try { vidWall = localStorage.getItem("ct:vidwall") === "on" } catch(e){}
+const bgvidBtn = document.getElementById("bgvidBtn");
+function paintVidWall(){
+  const on = vidWall && listening;
+  document.documentElement.classList.toggle("yt-bg", on);
+  bgvidBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
+  bgvidBtn.classList.toggle("on", vidWall);
+  document.getElementById("bgvidRow").hidden = !listening;
+}
+bgvidBtn.onclick = () => {
+  vidWall = !vidWall;
+  try { localStorage.setItem("ct:vidwall", vidWall ? "on" : "off") } catch(e){}
+  paintVidWall();
+};
 
 const volRange = document.getElementById("volRange");
 volRange.value = musicVol;
@@ -3385,6 +3434,8 @@ function ensurePlayer(){
     return;
   }
   ytReady = true;
+  const holder = document.getElementById("ytHolder");
+  if(holder && !document.getElementById("ytPlayer")) holder.innerHTML = '<div id="ytPlayer"></div>';
   ytPlayer = new window.YT.Player("ytPlayer", {
     height: "170", width: "100%",
     playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1, playsinline: 1 },
@@ -3395,6 +3446,17 @@ function ensurePlayer(){
           socket.emit("action", { type:"music-ended", id: music.playing.id, region });
         }
         if(e.data === window.YT.PlayerState.PLAYING) reportTitle();
+      },
+      onError: () => {
+        // rebuild once, then move on rather than sitting on a dead player
+        const cur = music.playing;
+        stopPlayer();
+        if(listening) setTimeout(() => { ensurePlayer(); syncPlayer(); }, 400);
+        if(cur) setTimeout(() => {
+          if(music.playing && music.playing.id === cur.id && ytWanted !== cur.id){
+            socket.emit("action", { type:"music-ended", id: cur.id, region });
+          }
+        }, 4000);
       }
     }
   });
@@ -3404,8 +3466,9 @@ function stopPlayer(){
     try { ytPlayer.destroy() } catch(e){}
   }
   ytPlayer = null; ytWanted = null;
-  const holder = document.getElementById("ytPlayer");
-  if(holder) holder.innerHTML = "";
+  // destroy() takes the mount point with it, so put a fresh one back
+  const holder = document.getElementById("ytHolder");
+  if(holder) holder.innerHTML = '<div id="ytPlayer"></div>';
 }
 function reportTitle(){
   const cur = music.playing;
