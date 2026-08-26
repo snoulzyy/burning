@@ -65,6 +65,7 @@ function hydrate(saved) {
     });
     state[r].log = keep;
   });
+  if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
@@ -122,6 +123,9 @@ function broadcast(region) {
 function broadcastChat() {
   io.emit("chatlog", state.chat);
 }
+function broadcastNotice() {
+  io.emit("notice", state.notice);
+}
 function broadcastRoster() {
   io.emit("roster", state.rosters);
 }
@@ -160,6 +164,7 @@ io.on("connection", socket => {
     live.forEach(x => socket.emit("sync", snapshot(x)));
     socket.emit("chatlog", state.chat);
     socket.emit("roster", state.rosters);
+    socket.emit("notice", state.notice);
     presence();
   });
 
@@ -324,6 +329,17 @@ io.on("connection", socket => {
         p.claimedName = null;
         persist();
         broadcastRoster();
+        return;
+      }
+      case "notice": {
+        const text = clean(a.text, 240);
+        state.notice = text
+          ? { text, by, at: Date.now() }
+          : { text: "", by: "", at: 0 };
+        note(region, text ? `announcement posted by ${by}` : `announcement cleared by ${by}`);
+        persist();
+        broadcastNotice();
+        broadcast(region);
         return;
       }
       case "person-add": {

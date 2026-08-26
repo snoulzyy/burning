@@ -119,6 +119,31 @@
   .tab.soon{color:#33465a;cursor:not-allowed;background:none}
   .tab.soon:hover{background:none;color:#33465a}
 
+  /* ---------------- notice ---------------- */
+  .notice{
+    display:flex;align-items:center;gap:10px;margin-bottom:14px;
+    padding:10px 13px;border-radius:11px;
+    background:linear-gradient(120deg,rgba(245,158,11,.16),rgba(244,63,94,.12));
+    border:1px solid rgba(245,158,11,.5);
+    box-shadow:0 0 18px -8px rgba(245,158,11,.9);
+  }
+  .notice[hidden]{display:none}
+  .notice-tag{
+    flex:none;font-size:9.5px;font-weight:800;letter-spacing:.16em;color:#fde68a;
+    padding:3px 7px;border-radius:5px;background:rgba(245,158,11,.22);
+  }
+  .notice-text{
+    flex:1;min-width:0;font-size:13px;font-weight:600;color:#fff7e6;
+    font-family:var(--name-face);word-break:break-word;
+  }
+  .notice-by{flex:none;font-size:10px;color:#d9b483;white-space:nowrap}
+  .notice-x{
+    flex:none;font:inherit;font-size:12px;line-height:1;color:#d9b483;
+    background:none;border:0;cursor:pointer;padding:2px 3px;
+  }
+  .notice-x:hover{color:#fff}
+  @media(max-width:700px){.notice-by{display:none}}
+
   /* ---------------- bench ---------------- */
   .bench{
     position:sticky;top:8px;z-index:30;
@@ -743,10 +768,18 @@
     </div>
     <span class="sticker-row" id="stickHead"></span>
     <div class="spacer"></div>
+    <button class="ghost" id="noticeBtn" title="Post a notice everyone sees">notice</button>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost help-btn" id="helpBtn" title="How this works">how to use ?</button>
     <nav class="tabs" id="tabs"></nav>
   </header>
+
+  <div class="notice" id="notice" hidden>
+    <span class="notice-tag">NOTICE</span>
+    <span class="notice-text" id="noticeText"></span>
+    <span class="notice-by" id="noticeBy"></span>
+    <button class="notice-x" id="noticeHide" title="Hide until it changes">✕</button>
+  </div>
 
   <section class="bench">
     <div class="bench-head">
@@ -1240,6 +1273,12 @@ const HELP_HTML = `
   <p>Moved a group and the timer restarted, but the channel had really been going
      40 minutes? Hit the amber clock on the channel and set the true duration.
      It applies to everyone on that channel at once.</p>
+
+  <h5>NOTICES</h5>
+  <p>The <span class="k">notice</span> button up top posts a message across the top of
+     the page for everyone, on every board. Handy for anything people keep missing.</p>
+  <p>It stays until someone clears it (post an empty one). Anyone can hide it for
+     themselves with the ✕, and it comes back when the message changes.</p>
 
   <h5>MVP CALL</h5>
   <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
@@ -2588,6 +2627,39 @@ mvpBtn.onclick = () => {
   setTimeout(() => mvpBtn.classList.remove("fired"), 900);
 };
 
+/* ---------------- announcements ---------------- */
+let notice = { text:"", by:"", at:0 };
+let hiddenNotice = "";
+try { hiddenNotice = localStorage.getItem("ct:noticehid") || "" } catch(e){}
+
+socket.on("notice", n => {
+  notice = (n && typeof n === "object") ? n : { text:"", by:"", at:0 };
+  renderNotice();
+});
+
+function renderNotice(){
+  const box = document.getElementById("notice");
+  if(!box) return;
+  const key = notice.at ? String(notice.at) : "";
+  if(!notice.text || hiddenNotice === key){ box.hidden = true; return; }
+  document.getElementById("noticeText").textContent = notice.text;
+  document.getElementById("noticeBy").textContent =
+    (notice.by ? notice.by + " · " : "") + ago(notice.at);
+  box.hidden = false;
+}
+
+document.getElementById("noticeHide").onclick = () => {
+  hiddenNotice = notice.at ? String(notice.at) : "";
+  try { localStorage.setItem("ct:noticehid", hiddenNotice) } catch(e){}
+  renderNotice();
+};
+
+document.getElementById("noticeBtn").onclick = () => {
+  const v = prompt("Notice for everyone (leave empty to clear):", notice.text || "");
+  if(v === null) return;
+  send({ type:"notice", text: v.trim().slice(0,240) });
+};
+
 const bgBtn = document.getElementById("bgBtn");
 let bgOn = true;
 try { bgOn = localStorage.getItem("ct:bg") !== "off" } catch(e){}
@@ -2761,6 +2833,10 @@ setInterval(() => {
   document.getElementById("refreshed").textContent =
     new Date().toISOString().slice(11,19) + " UTC";
   checkChannelTimers();
+  if(notice.text && !document.getElementById("notice").hidden){
+    document.getElementById("noticeBy").textContent =
+      (notice.by ? notice.by + " · " : "") + ago(notice.at);
+  }
   document.querySelectorAll(".ago").forEach(a => {
     const t = ago(+a.dataset.at);
     a.textContent = t.replace(" ago", "");
