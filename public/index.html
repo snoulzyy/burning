@@ -149,31 +149,42 @@
   .tab.soon:hover{background:none;color:#33465a}
 
   /* ---------------- bench ---------------- */
-  .board-area{display:grid;grid-template-columns:206px minmax(0,1fr);gap:14px;align-items:start}
+  /* stretch, not start: the sidebar's column takes the height of the board
+     beside it, so the panel can fill it instead of sitting as a short box */
+  .board-area{display:grid;grid-template-columns:246px minmax(0,1fr);gap:14px;align-items:stretch}
   .board-side{min-width:0}
+  /* a flex column so .bench can flex:1 into it — percentage heights inside a
+     grid item are not reliable, this is */
+  .bench-col{min-width:0;display:flex;flex-direction:column}
   @media(max-width:900px){
-    .board-area{grid-template-columns:1fr}
+    .board-area{grid-template-columns:1fr;align-items:start}
+    .bench-col{display:block}
   }
   .bench{
     position:sticky;top:8px;z-index:30;
-    margin-bottom:16px;background:#0b131c;
+    display:flex;flex-direction:column;
+    flex:1;min-height:0;
+    /* as tall as the board, but never taller than the screen — past that it
+       clamps and the sticky panel stays put while the board scrolls */
+    max-height:calc(100vh - 16px);
+    background:#0b131c;
     border:1px solid var(--line);border-radius:12px;overflow:hidden;
     box-shadow:0 10px 26px rgba(0,0,0,.45);
   }
   .bench.armed{border-color:rgba(34,211,238,.55);box-shadow:0 0 0 1px rgba(34,211,238,.25),0 10px 26px rgba(0,0,0,.5)}
   .bench-head{
-    display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 11px;
+    display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 12px;flex:none;
     border-bottom:1px solid var(--line-soft);
   }
-  .bench-title{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--cyan)}
-  .bench-hint{font-size:9.5px;color:var(--dim);flex-basis:100%;line-height:1.3}
-  .bench-add{margin-left:auto;font-size:10.5px;padding:4px 9px}
+  .bench-title{font-size:13.5px;font-weight:700;letter-spacing:.01em;color:var(--text)}
+  .bench-hint{font-size:9.5px;color:var(--dim);line-height:1.3;min-width:0}
+  .bench-add{margin-left:auto;font-size:10.5px;padding:4px 9px;flex:none}
   .bench-body{
     display:flex;flex-direction:column;gap:5px;padding:9px 10px;
-    max-height:calc(100vh - 260px);overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;
+    flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;
   }
   @media(max-width:900px){
-    .bench-body{flex-direction:row;flex-wrap:wrap;align-content:flex-start;max-height:96px}
+    .bench-body{flex:none;flex-direction:row;flex-wrap:wrap;align-content:flex-start;max-height:96px}
   }
   .bench-body::-webkit-scrollbar{width:7px}
   .bench-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
@@ -189,15 +200,30 @@
   .bench-empty{font-size:11.5px;color:var(--dim);padding:2px 0}
 
   .chip{
-    display:inline-flex;align-items:center;gap:7px;padding:5px 6px 5px 10px;
+    display:inline-flex;align-items:center;gap:8px;padding:6px 9px;
     border-radius:8px;border:1px solid var(--line);background:var(--raise);
     font-size:12.5px;cursor:grab;transition:.15s;
   }
   .chip:hover{border-color:#2d3f52}
   .chip:active{cursor:grabbing}
-  .chip .nm{font-family:var(--name-face);font-weight:600}
-  .chip.placed{opacity:.45;cursor:default}
-  .chip.placed .where{font-size:10px;color:var(--amber);letter-spacing:.04em}
+  /* name takes the slack so everything after it lines up down the column */
+  .chip .nm{
+    flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-family:var(--name-face);font-weight:600;
+  }
+  @media(max-width:900px){.chip .nm{flex:none}}
+  /* their colour, as a dot, so a name still reads as theirs at a glance */
+  .pdot{width:7px;height:7px;border-radius:50%;flex:none;background:#3f556a}
+  /* right-hand slot: where they're sitting, or who owns the name */
+  .pmeta{
+    flex:none;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:10px;letter-spacing:.03em;color:var(--dim);
+  }
+  .pmeta.where{color:var(--amber)}
+  .lockic{flex:none;display:grid;place-items:center;line-height:0;color:#4a5f74}
+  .lockic svg{width:11px;height:11px;display:block}
+  .lockic.me{color:var(--cyan)}
+  .chip.placed{opacity:.62;cursor:default}
   .chip.mine{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
   .chip.mine.tinted{box-shadow:0 0 0 1px rgba(255,255,255,.35), 0 0 14px -2px var(--glow)}
   .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
@@ -401,6 +427,39 @@
     border:1px solid rgba(245,158,11,.35);border-radius:6px;
   }
   .ch.flash{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(34,211,238,.5)}
+
+  /* ---------------- channel filters ---------------- */
+  .filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .filter-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+  .fbtn{
+    --tone:var(--cyan);
+    font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;
+    padding:9px 16px;border-radius:9px;cursor:pointer;
+    color:var(--dim);background:var(--panel);border:1px solid var(--line);
+    transition:color .15s,background .15s,border-color .15s;
+  }
+  /* the tiers carry the same colours as the badges on the cards */
+  .fbtn[data-tone="100"]{--tone:#22c55e}
+  .fbtn[data-tone="90"] {--tone:#5ddc4f}
+  .fbtn[data-tone="80"] {--tone:#a3e635}
+  .fbtn[data-tone="70"] {--tone:#e8d013}
+  .fbtn[data-tone]{color:var(--tone);border-color:rgba(255,255,255,.09)}
+  .fbtn:hover{color:var(--text);border-color:#2d3f52;background:rgba(255,255,255,.045)}
+  .fbtn[data-tone]:hover{color:var(--tone);border-color:var(--tone);background:rgba(255,255,255,.05)}
+  .fbtn.on{
+    color:var(--tone);border-color:var(--tone);background:rgba(255,255,255,.06);
+    box-shadow:0 0 12px -6px var(--tone);
+  }
+  .filter-count{margin-left:auto;font-size:11.5px;color:var(--dim);white-space:nowrap;flex:none}
+  .grid-empty{padding:26px 12px;text-align:center;font-size:12px;color:var(--dim)}
+  .grid-empty[hidden]{display:none}
+  @media(max-width:700px){
+    .filters{gap:8px}
+    .filter-row{gap:6px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+    .fbtn{padding:8px 13px;flex:none}
+    .filter-count{margin-left:0}
+  }
+  html.has-bg .fbtn{background:rgba(10,17,25,calc(var(--glass) + .1))}
 
 /* ---------------- board ---------------- */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:10px}
@@ -1047,14 +1106,16 @@
   </header>
 
   <div class="board-area">
-  <section class="bench">
-    <div class="bench-head">
-      <span class="bench-title" id="benchTitle">Players (0)</span>
-      <span class="bench-hint" id="benchHint">drag, or click then click a channel</span>
-      <button class="ghost bench-add" id="benchAdd">+ add</button>
-    </div>
-    <div class="bench-body" id="bench"></div>
-  </section>
+  <div class="bench-col">
+    <section class="bench">
+      <div class="bench-head">
+        <span class="bench-title" id="benchTitle">Players (0)</span>
+        <span class="bench-hint" id="benchHint">drag, or click then click a channel</span>
+        <button class="ghost bench-add" id="benchAdd">+ add</button>
+      </div>
+      <div class="bench-body" id="bench"></div>
+    </section>
+  </div>
 
   <div class="board-side">
     <div class="filters" id="filters">
@@ -1354,6 +1415,13 @@ function crossSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
     + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round">'
     + '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+}
+
+function lockSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/>'
+    + '<path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/></svg>';
 }
 
 function gripSVG(){
@@ -2637,28 +2705,38 @@ function renderBench(){
   if(!benchEl) return;
   const roster = rosters[myArea()] || [];
   benchEl.innerHTML = "";
-  document.querySelector(".bench-title").textContent = myArea() + " PEOPLE";
   if(!roster.length){
     const e = document.createElement("div");
     e.className = "bench-empty";
     e.textContent = "No players yet — hit “add”.";
     benchEl.appendChild(e);
-    return;
   }
 
   roster.forEach(p => {
     const at = placementOf(p.id);
+    // a name belongs to whoever added it, so there's nothing to press
+    const mine = myIds.has(p.id);
+    const plit = p.color ? glowInk(p.color) : null;
+
     const chip = document.createElement("div");
     chip.className = "chip"
       + (at ? " placed" : "")
-      + (myIds.has(p.id) ? " mine" : "")
+      + (mine ? " mine" : "")
       + (pickedPerson === p.id ? " picked" : "");
+
+    // their colour as a dot, so the row still reads as theirs at a glance
+    const dot = document.createElement("span");
+    dot.className = "pdot";
+    if(plit){
+      dot.style.background = plit;
+      dot.style.boxShadow = "0 0 8px -1px " + plit;
+    }
+    chip.appendChild(dot);
 
     const nm = document.createElement("span");
     nm.className = "nm";
     nm.textContent = p.name;
     if(p.color){
-      const plit = glowInk(p.color);
       const [pa, pb, pc] = auraRamp(p.color);
       chip.classList.add("tinted");
       chip.style.setProperty("--a1", rgba(pa, .30));
@@ -2673,13 +2751,7 @@ function renderBench(){
     }
     chip.appendChild(nm);
 
-    if(at){
-      const w = document.createElement("span");
-      w.className = "where";
-      w.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
-      if(p.color){ w.style.color = glowInk(p.color); w.style.opacity = ".8" }
-      chip.appendChild(w);
-    } else {
+    if(!at){
       chip.draggable = true;
       chip.ondragstart = ev => {
         ev.dataTransfer.effectAllowed = "move";
@@ -2693,18 +2765,30 @@ function renderBench(){
       };
     }
 
-    // a name belongs to whoever added it, so there's nothing to press
-    const mine = myIds.has(p.id);
+    // one slot on the right: where they're sitting, or else who owns the name
+    const meta = document.createElement("span");
+    meta.className = "pmeta" + (at ? " where" : "");
+    if(at){
+      meta.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
+      meta.title = p.name + " is on " + at.region + " " + chLabel(at.idx);
+    } else if(p.claimedBy){
+      meta.textContent = mine ? "you" : (p.claimedName || "claimed");
+    }
+    if(plit && meta.textContent){
+      meta.style.color = plit;
+      meta.style.opacity = at ? ".9" : ".72";
+    }
+    chip.appendChild(meta);
 
     if(p.claimedBy){
-      const tag = document.createElement("span");
-      tag.className = "claimtag" + (mine ? " me" : "");
-      tag.textContent = mine ? "you" : (p.claimedName || "claimed");
-      if(p.color){
-        tag.style.color = glowInk(p.color);
-        tag.style.opacity = ".85";
-      }
-      chip.appendChild(tag);
+      const lock = document.createElement("span");
+      lock.className = "lockic" + (mine ? " me" : "");
+      lock.innerHTML = lockSVG();
+      lock.title = mine
+        ? "This name is yours — alerts come to this browser"
+        : "Claimed by " + (p.claimedName || "someone");
+      if(plit){ lock.style.color = plit; lock.style.opacity = mine ? "1" : ".7"; }
+      chip.appendChild(lock);
     }
 
     if(!at && (!p.claimedBy || mine)){
@@ -2797,9 +2881,7 @@ function renderFilters(matched){
 
   const count = document.getElementById("filterCount");
   if(count){
-    count.textContent = filterId === "all"
-      ? ""
-      : matched + (matched === 1 ? " channel" : " channels");
+    count.textContent = matched + (matched === 1 ? " channel" : " channels");
   }
 }
 
