@@ -173,12 +173,23 @@
   }
   .bench.armed{border-color:rgba(34,211,238,.55);box-shadow:0 0 0 1px rgba(34,211,238,.25),0 10px 26px rgba(0,0,0,.5)}
   .bench-head{
-    display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 12px;flex:none;
+    display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 10px;flex:none;
     border-bottom:1px solid var(--line-soft);
   }
   .bench-title{font-size:13.5px;font-weight:700;letter-spacing:.01em;color:var(--text)}
-  .bench-hint{font-size:9.5px;color:var(--dim);line-height:1.3;min-width:0}
-  .bench-add{margin-left:auto;font-size:10.5px;padding:4px 9px;flex:none}
+  .bench-hint{font-size:9.5px;color:var(--dim);line-height:1.3;min-width:0;margin-left:auto}
+  /* its own full-width row under the title, so it lines up with the player rows
+     instead of hanging off the right. beats .ghost on specificity, not order. */
+  .bench .bench-add{
+    flex:1 0 100%;width:100%;margin:2px 0 0;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    padding:7px 9px;border-radius:8px;font-size:12px;letter-spacing:.02em;
+    color:var(--dim);background:var(--raise);border:1px dashed #26374a;
+  }
+  .bench .bench-add:hover{
+    color:var(--cyan);background:rgba(34,211,238,.07);
+    border-style:solid;border-color:rgba(34,211,238,.5);
+  }
   .bench-body{
     display:flex;flex-direction:column;gap:5px;padding:9px 10px;
     flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;
