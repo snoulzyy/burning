@@ -502,9 +502,7 @@ io.on("connection", socket => {
         const cur = state.music.playing;
         if (!cur || cur.id !== a.id) return;
         const want = !!a.paused;
-        if (want === !!cur.paused) return;                 // already in that state
-        if (Date.now() - (cur.lastToggle || 0) < 1200) return;   // echo from another listener
-        cur.lastToggle = Date.now();
+        if (want === !!cur.paused) return;
         if (want) {
           const at = Number(a.seconds);
           cur.at = isFinite(at) && at >= 0 ? at : (Date.now() - cur.startedAt) / 1000;
@@ -594,13 +592,11 @@ io.on("connection", socket => {
         const area = areaOf(region);
         const list = state.rosters[area];
         const name = clean(a.name, 24);
-        const token = clean(a.token, 64);
-        if (!list || !name || !token) return;
+        if (!list || !name) return;
         if (name.toLowerCase() === "guest") return;   // guests stay guests
         if (list.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
         if (list.length >= 200) return;
-        // whoever adds a name owns it straight away
-        list.push({ id: uid(), name, color: null, claimedBy: token, claimedName: by });
+        list.push({ id: uid(), name, color: null, claimedBy: null, claimedName: null });
         list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
