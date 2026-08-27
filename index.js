@@ -95,6 +95,22 @@ function hydrate(saved) {
     state.musicLog.splice(0, state.musicLog.length - MUSIC_LOG_MAX);
   }
 
+  // How burning is projected. These are game rules, not preferences, so they
+  // live on the server and everyone reads the same numbers — otherwise two
+  // people looking at the same channel would see different predictions.
+  const dp = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8 };
+  if (!state.proj || typeof state.proj !== "object") state.proj = {};
+  const whole = (v, d, lo, hi) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+  };
+  state.proj = {
+    gain:        whole(state.proj.gain,        dp.gain,        1, 50),
+    loss:        whole(state.proj.loss,        dp.loss,        0, 50),
+    curfewStart: whole(state.proj.curfewStart, dp.curfewStart, 0, 23),
+    curfewEnd:   whole(state.proj.curfewEnd,   dp.curfewEnd,   0, 23)
+  };
+
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
@@ -303,6 +319,7 @@ io.on("connection", socket => {
     socket.emit("mvptimer", state.mvpTimer);
     socket.emit("music", musicView());
     socket.emit("musiclog", state.musicLog);
+    socket.emit("proj", state.proj);
     socket.emit("listeners", listeners);
     presence();
   });
@@ -608,6 +625,31 @@ io.on("connection", socket => {
           : `MVP alert message reset by ${by}`);
         persist();
         io.emit("mvpmsg", state.mvpMsg);
+        broadcast(region);
+        return;
+      }
+      case "proj-set": {
+        // the projection rules are shared, so a change lands on every board
+        const p = state.proj;
+        const num = (v, cur, lo, hi) => {
+          if (v === undefined || v === null || v === "") return cur;
+          const n = Math.round(Number(v));
+          return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : cur;
+        };
+        const next = {
+          gain:        num(a.gain,        p.gain,        1, 50),
+          loss:        num(a.loss,        p.loss,        0, 50),
+          curfewStart: num(a.curfewStart, p.curfewStart, 0, 23),
+          curfewEnd:   num(a.curfewEnd,   p.curfewEnd,   0, 23)
+        };
+        if (JSON.stringify(next) === JSON.stringify(p)) return;
+        state.proj = next;
+        note(region, `projection rules changed by ${by}`
+          + ` — +${next.gain}%/h, −${next.loss}% on leaving, curfew `
+          + String(next.curfewStart).padStart(2, "0") + ":00–"
+          + String(next.curfewEnd).padStart(2, "0") + ":00 UTC");
+        persist();
+        io.emit("proj", state.proj);
         broadcast(region);
         return;
       }

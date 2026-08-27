@@ -276,64 +276,89 @@
 
   /* ---------------- next up (floats over the board) ---------------- */
   .nextmenu{
-    position:fixed;z-index:60;width:298px;padding:10px;border-radius:12px;
-    background:#0a1119;border:1px solid rgba(167,139,250,.45);
-    box-shadow:0 18px 44px rgba(0,0,0,.7), 0 0 16px -6px rgba(167,139,250,.8);
+    position:fixed;z-index:60;width:344px;padding:14px 12px 6px;border-radius:14px;
+    background:#0d131c;border:1px solid rgba(167,139,250,.42);
+    box-shadow:0 22px 52px rgba(0,0,0,.72), 0 0 18px -6px rgba(167,139,250,.7);
   }
-  .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 0 9px}
-  .nextmenu h4{margin:0;font:inherit;font-size:9.5px;font-weight:600;letter-spacing:.16em;color:#c4b5fd}
-  .grp{display:flex;align-items:center;gap:4px;margin-left:auto}
-  .grp span{font-size:9px;letter-spacing:.14em;color:var(--dim)}
+  /* a caret pointing back up at the bar you clicked, so it reads as attached */
+  .nextmenu::before,
+  .nextmenu::after{
+    content:"";position:absolute;left:var(--caret,50%);width:0;height:0;
+    border-left:8px solid transparent;border-right:8px solid transparent;
+  }
+  .nextmenu::before{top:-9px;border-bottom:9px solid rgba(167,139,250,.42);margin-left:-8px}
+  .nextmenu::after{top:-8px;border-bottom:9px solid #0d131c;margin-left:-8px}
+  .nextmenu.flip::before{top:auto;bottom:-9px;border-bottom:0;border-top:9px solid rgba(167,139,250,.42)}
+  .nextmenu.flip::after{top:auto;bottom:-8px;border-bottom:0;border-top:9px solid #0d131c}
+  .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 4px 11px}
+  .nextmenu h4{margin:0;font:inherit;font-size:11px;font-weight:700;letter-spacing:.17em;color:#c4b5fd}
+  .grp{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .grp span{font-size:9.5px;letter-spacing:.14em;color:var(--dim)}
   .grp b{
-    font-size:11.5px;font-weight:700;color:var(--text);min-width:24px;text-align:center;
-    padding:2px 0;border-radius:5px;background:var(--raise);border:1px solid var(--line);
+    font-size:13px;font-weight:700;color:var(--text);min-width:30px;text-align:center;
+    padding:4px 0;border-radius:7px;background:var(--raise);border:1px solid var(--line);
   }
   .grp button{
-    width:19px;height:19px;display:grid;place-items:center;padding:0;line-height:0;
-    font:inherit;font-size:12px;color:var(--dim);cursor:pointer;
-    background:var(--raise);border:1px solid var(--line);border-radius:5px;
+    width:24px;height:24px;display:grid;place-items:center;padding:0;line-height:0;
+    font:inherit;font-size:14px;color:var(--dim);cursor:pointer;
+    background:var(--raise);border:1px solid var(--line);border-radius:7px;
   }
   .grp button:hover{color:var(--cyan);border-color:rgba(34,211,238,.5)}
-  .n-soon{font-size:10px;color:var(--amber);white-space:nowrap}
+  .n-soon{font-size:11px;color:var(--amber);white-space:nowrap}
   .next-row.soon{opacity:.9}
   .next-row.soon .n-ch{color:var(--amber)}
   .next-body{
-    display:flex;flex-direction:column;max-height:320px;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;max-height:52vh;overflow-y:auto;overscroll-behavior:contain;
   }
   .next-body::-webkit-scrollbar{width:7px}
   .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .next-row{
-    display:flex;align-items:center;gap:9px;padding:10px 8px;border-radius:7px;
+    display:flex;align-items:center;gap:11px;padding:12px 8px;border-radius:8px;
     background:none;border:0;border-bottom:1px solid var(--line-soft);
     cursor:pointer;font:inherit;text-align:left;
   }
   .next-row:last-child{border-bottom:0}
   .next-row:hover{background:rgba(167,139,250,.12)}
-  .next-row .n-ch{font-size:12.5px;font-weight:700;letter-spacing:.06em;color:var(--text);flex:none;min-width:48px}
-  .next-row .n-pct{font-size:10.5px;font-weight:800;padding:3px 7px;border-radius:5px;flex:none}
+  .next-row .n-ch{font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--text);flex:none;min-width:56px}
+  .next-row .n-pct{font-size:12px;font-weight:800;padding:4px 8px;border-radius:6px;flex:none}
   /* status takes the slack so the slot count and the arrow line up down the list */
   .next-row .n-tick{
-    flex:1;min-width:0;font-size:10.5px;font-weight:700;color:#4ade80;
+    flex:1;min-width:0;font-size:12px;font-weight:700;color:#4ade80;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;
   }
   .next-row .n-tick.flat{color:var(--dim)}
   .next-row .n-tick.frozen{color:#60a5fa}
-  .next-row .n-slots{font-size:10.5px;color:var(--dim);flex:none;min-width:44px}
+  .next-row .n-slots{font-size:12px;color:var(--dim);flex:none;min-width:50px}
   .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;flex:none;margin-left:2px}
-  .next-row .n-go svg{width:12px;height:12px;display:block}
+  .next-row .n-go svg{width:14px;height:14px;display:block}
   .next-row:hover .n-go{color:#c4b5fd}
   /* curfew card: what's frozen and until when, rather than a bare warning */
   .curfew{
-    display:flex;align-items:center;gap:11px;
-    margin:-2px 0 9px;padding:9px 11px;border-radius:8px;
+    display:flex;align-items:center;gap:13px;
+    margin:0 4px 10px;padding:12px 13px;border-radius:9px;
     background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.28);
   }
-  .curfew .flake{font-size:19px;line-height:1;color:#60a5fa;flex:none}
-  .curfew .ctext{min-width:0;line-height:1.5}
-  .curfew .cwhen{font-size:10.5px;letter-spacing:.03em;color:#bfdbfe}
-  .curfew .cstat{font-size:10px;letter-spacing:.03em;color:var(--dim)}
+  .curfew .flake{font-size:23px;line-height:1;color:#60a5fa;flex:none}
+  .curfew .ctext{min-width:0;line-height:1.55}
+  .curfew .cwhen{font-size:12px;letter-spacing:.03em;color:#bfdbfe}
+  .curfew .cstat{font-size:11.5px;letter-spacing:.03em;color:var(--dim)}
   .curfew .cstat b{color:#60a5fa;font-weight:700}
-  .next-empty{padding:12px 9px;font-size:11px;color:var(--dim);line-height:1.5}
+  .next-empty{padding:14px 9px;font-size:12px;color:var(--dim);line-height:1.5}
+  /* footer link into the shared projection rules */
+  .next-manage{
+    display:flex;align-items:center;gap:11px;width:100%;
+    margin-top:2px;padding:13px 8px;border:0;border-top:1px solid var(--line-soft);
+    background:none;cursor:pointer;font:inherit;text-align:left;border-radius:0 0 8px 8px;
+  }
+  .next-manage:hover{background:rgba(167,139,250,.12)}
+  .next-manage .m-ic{display:grid;place-items:center;color:#a78bfa;line-height:0;flex:none}
+  .next-manage .m-ic svg{width:18px;height:18px;display:block}
+  .next-manage .m-label{flex:1;font-size:13px;font-weight:600;color:#c4b5fd}
+  .next-manage .m-go{display:grid;place-items:center;color:#a78bfa;line-height:0;flex:none}
+  .next-manage .m-go svg{width:14px;height:14px;display:block}
+  @media(max-width:420px){
+    .nextmenu{width:calc(100vw - 20px)}
+  }
   .movebar{
     display:grid;place-items:center;
     width:calc(100% - 14px);margin:0 7px 7px;height:22px;padding:0;
@@ -909,10 +934,24 @@
   }
   .gear-btn:hover{color:var(--cyan);border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.08)}
   .gear-btn svg{width:17px;height:17px;display:block}
-  .set-group{margin-bottom:18px}
+  .set-group{margin-bottom:18px;border-radius:9px;transition:background .3s,box-shadow .3s}
   .set-group:last-child{margin-bottom:0}
+  /* flashes when you arrive here from the Manage projections link */
+  .set-group.lit{
+    background:rgba(167,139,250,.10);
+    box-shadow:0 0 0 8px rgba(167,139,250,.10), 0 0 0 9px rgba(167,139,250,.35);
+  }
   .set-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .set-row .bgrange{width:150px}
+  .set-note{margin:0 0 9px;font-size:11px;line-height:1.55;color:var(--dim)}
+  .proj-row{margin-bottom:8px}
+  .proj-row label{font-size:11.5px;color:var(--text);min-width:88px}
+  .set-unit{font-size:11px;color:var(--dim)}
+  .numin{
+    width:58px;padding:5px 7px;font:inherit;font-size:12px;color:var(--text);
+    background:var(--raise);border:1px solid var(--line);border-radius:7px;
+  }
+  .numin:focus{outline:none;border-color:rgba(34,211,238,.6)}
   .modal{
     position:fixed;inset:0;z-index:90;display:grid;place-items:center;
     background:rgba(2,6,11,.72);padding:20px;
@@ -1166,6 +1205,33 @@
           <h5>SOUND</h5>
           <div class="set-row">
             <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
+          </div>
+        </div>
+        <div class="set-group" id="projGroup">
+          <h5>PROJECTIONS</h5>
+          <p class="set-note">Shared by everyone — changing these changes what every
+             board predicts, so only touch them if the game's rates actually changed.</p>
+          <div class="set-row proj-row">
+            <label for="projGain">Burning gain</label>
+            <input class="numin" id="projGain" type="number" min="1" max="50" step="1" value="10">
+            <span class="set-unit">% per active hour</span>
+          </div>
+          <div class="set-row proj-row">
+            <label for="projLoss">Leave penalty</label>
+            <input class="numin" id="projLoss" type="number" min="0" max="50" step="1" value="10">
+            <span class="set-unit">% when the last person leaves</span>
+          </div>
+          <div class="set-row proj-row">
+            <label for="projStart">Curfew</label>
+            <input class="numin" id="projStart" type="number" min="0" max="23" step="1" value="22">
+            <span class="set-unit">to</span>
+            <input class="numin" id="projEnd" type="number" min="0" max="23" step="1" value="8">
+            <span class="set-unit">UTC — set both the same for none</span>
+          </div>
+          <div class="set-row">
+            <button class="ghost" id="projSave">save for everyone</button>
+            <button class="ghost" id="projReset" title="Back to 10 / 10 / 22–08">defaults</button>
+            <span class="set-unit" id="projSaved"></span>
           </div>
         </div>
         <div class="set-group">
@@ -1852,13 +1918,23 @@ const HELP_HTML = `
   <p>Click your name at the bottom to change how you show up.</p>
 `;
 
-function openHelp(){
+function openHelp(focusId){
   const box = document.getElementById("settings");
   if(!box) return;
   const body = document.getElementById("helpBody");
   if(body && !body.innerHTML) body.innerHTML = HELP_HTML;
   box.hidden = false;
   try { localStorage.setItem("ct:seenhelp", "1") } catch(e){}
+  if(focusId){
+    // opened from somewhere specific — put that section in view and mark it,
+    // otherwise you land at the top and have to hunt for what you clicked
+    const sec = document.getElementById(focusId);
+    if(sec){
+      if(sec.scrollIntoView) sec.scrollIntoView({ block:"start", behavior:"smooth" });
+      sec.classList.add("lit");
+      setTimeout(() => sec.classList.remove("lit"), 1400);
+    }
+  }
 }
 function closeHelp(){
   const box = document.getElementById("settings");
@@ -1870,7 +1946,57 @@ document.getElementById("settings").onclick = e => {
 };
 const helpBtn = document.getElementById("helpBtn");
 helpBtn.innerHTML = gearSVG();
-helpBtn.onclick = openHelp;
+helpBtn.onclick = () => openHelp();
+
+/* ---------------- projection rules ---------------- */
+const projGain  = document.getElementById("projGain");
+const projLoss  = document.getElementById("projLoss");
+const projStart = document.getElementById("projStart");
+const projEnd   = document.getElementById("projEnd");
+const projSaved = document.getElementById("projSaved");
+
+function paintProj(){
+  if(!projGain) return;
+  // don't stamp over a field someone is mid-edit in
+  const active = document.activeElement;
+  const set = (el, v) => { if(el && el !== active) el.value = v; };
+  set(projGain,  proj.gain);
+  set(projLoss,  proj.loss);
+  set(projStart, proj.curfewStart);
+  set(projEnd,   proj.curfewEnd);
+}
+
+function sendProj(next){
+  send(Object.assign({ type:"proj-set" }, next));
+  if(projSaved){
+    projSaved.textContent = "sent";
+    setTimeout(() => { if(projSaved.textContent === "sent") projSaved.textContent = "" }, 1600);
+  }
+}
+
+if(document.getElementById("projSave")){
+  document.getElementById("projSave").onclick = () => sendProj({
+    gain: projGain.value, loss: projLoss.value,
+    curfewStart: projStart.value, curfewEnd: projEnd.value
+  });
+}
+if(document.getElementById("projReset")){
+  document.getElementById("projReset").onclick = () =>
+    sendProj({ gain:10, loss:10, curfewStart:22, curfewEnd:8 });
+}
+
+socket.on("proj", p => {
+  if(!p || typeof p !== "object") return;
+  proj = {
+    gain:        Number(p.gain)        || 10,
+    loss:        Number(p.loss)        || 0,
+    curfewStart: Number(p.curfewStart) || 0,
+    curfewEnd:   Number(p.curfewEnd)   || 0
+  };
+  paintProj();
+  closeMenu();      // any open projection list is now out of date
+  render();
+});
 
 function gearSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
@@ -2291,22 +2417,29 @@ function flush(){ if(pending){ board = pending.channels; log = pending.log; pend
    The clock stops during curfew, 22:00–08:00 UTC (the -2 to +8 window),
    and burning never slides back down while frozen.
    ------------------------------------------------------------------ */
-const CURFEW_START = 22;   // UTC hour the climb stops
-const CURFEW_END   = 8;    // UTC hour it starts again
-const LEAVE_LOSS   = 10;   // % knocked off as the last person walks
-const HOURLY_GAIN  = 10;   // % gained per active hour while empty
+/* The rules live on the server so everyone projects the same numbers. These
+   are the fallbacks until the first "proj" message lands. */
+let proj = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8 };
+const CURFEW_START = () => proj.curfewStart;   // UTC hour the climb stops
+const CURFEW_END   = () => proj.curfewEnd;     // UTC hour it starts again
+const LEAVE_LOSS   = () => proj.loss;          // % knocked off as the last person walks
+const HOURLY_GAIN  = () => proj.gain;          // % gained per active hour while empty
+
+const hh = n => String(n).padStart(2, "0") + ":00";
+const curfewLabel = () => "Curfew " + hh(CURFEW_START()) + "–" + hh(CURFEW_END()) + " UTC";
 
 // milliseconds between two times that actually count, curfew removed
 function activeMsBetween(from, to){
   if(to <= from) return 0;
+  if(CURFEW_START() === CURFEW_END()) return to - from;   // no freeze window set
   let total = 0;
   const day = 86400000;
   let cursor = new Date(from);
   cursor.setUTCHours(0, 0, 0, 0);
   for(let guard = 0; guard < 400 && cursor.getTime() < to; guard++){
     const dayStart = cursor.getTime();
-    const winStart = dayStart + CURFEW_END * 3600000;      // 08:00 UTC
-    const winEnd   = dayStart + CURFEW_START * 3600000;    // 22:00 UTC
+    const winStart = dayStart + CURFEW_END() * 3600000;      // 08:00 UTC
+    const winEnd   = dayStart + CURFEW_START() * 3600000;    // 22:00 UTC
     const a = Math.max(from, winStart);
     const b = Math.min(to, winEnd);
     if(b > a) total += b - a;
@@ -2317,18 +2450,19 @@ function activeMsBetween(from, to){
 
 // walk forward from a moment until enough *active* time has passed, skipping curfew
 function whenActiveReached(start, neededMs){
+  if(CURFEW_START() === CURFEW_END()) return start + neededMs;
   let cur = start, left = neededMs;
   for(let guard = 0; guard < 400 && left > 0; guard++){
     const d = new Date(cur); d.setUTCHours(0,0,0,0);
     const dayStart = d.getTime();
-    const winStart = dayStart + CURFEW_END * 3600000;
-    const winEnd   = dayStart + CURFEW_START * 3600000;
+    const winStart = dayStart + CURFEW_END() * 3600000;
+    const winEnd   = dayStart + CURFEW_START() * 3600000;
     if(cur < winStart) cur = winStart;
-    if(cur >= winEnd){ cur = dayStart + 86400000 + CURFEW_END * 3600000; continue; }
+    if(cur >= winEnd){ cur = dayStart + 86400000 + CURFEW_END() * 3600000; continue; }
     const avail = winEnd - cur;
     if(left <= avail) return cur + left;
     left -= avail;
-    cur = dayStart + 86400000 + CURFEW_END * 3600000;
+    cur = dayStart + 86400000 + CURFEW_END() * 3600000;
   }
   return null;
 }
@@ -2369,16 +2503,18 @@ function projectedPct(c){
   const anchor = anchorOf(c);
   if(!anchor) return null;                         // nothing to measure from
   const left = c.emptiedAt || 0, set = c.pctAt || 0;
-  const start = (left >= set) ? c.pct - LEAVE_LOSS : c.pct;   // leave penalty, if that's the anchor
+  const start = (left >= set) ? c.pct - LEAVE_LOSS() : c.pct;  // leave penalty, if that's the anchor
   // it steps up on the hour, it doesn't creep — 80% holds at 80% until the tick
   const hours = Math.floor(activeMsBetween(anchor, Date.now()) / 3600000);
-  return Math.max(0, Math.min(100, start + HOURLY_GAIN * hours));
+  return Math.max(0, Math.min(100, start + HOURLY_GAIN() * hours));
 }
 
 // true while the clock is inside the freeze window
 function inCurfew(d){
+  if(CURFEW_START() === CURFEW_END()) return false;   // no freeze window set
   const h = (d || new Date()).getUTCHours();
-  return h >= CURFEW_START || h < CURFEW_END;
+  const a = CURFEW_START(), b = CURFEW_END();
+  return a > b ? (h >= a || h < b) : (h >= a && h < b);
 }
 
 /* ---------------- next up ----------------
@@ -2538,8 +2674,7 @@ function openNextMenu(anchor, fromIdx){
     text.className = "ctext";
     const when = document.createElement("div");
     when.className = "cwhen";
-    when.textContent = "Curfew " + String(CURFEW_START).padStart(2,"0")
-      + ":00–" + String(CURFEW_END).padStart(2,"0") + ":00 UTC";
+    when.textContent = curfewLabel();
     const stat = document.createElement("div");
     stat.className = "cstat";
     stat.innerHTML = 'Status: <b></b>';
@@ -2594,10 +2729,12 @@ function openNextMenu(anchor, fromIdx){
       } else if(t.frozen){
         tick.textContent = "Frozen";
         tick.classList.add("frozen");
-        tick.title = "curfew — resumes 08:00 UTC, then +10% after " + until(t.in);
+        tick.title = "curfew — resumes " + hh(CURFEW_END()) + " UTC, then +"
+          + HOURLY_GAIN() + "% after " + until(t.in);
       } else {
-        tick.textContent = "+10% " + until(t.in);
-        tick.title = "next 10% around " + new Date(t.at).toISOString().slice(11,16) + " UTC";
+        tick.textContent = "+" + HOURLY_GAIN() + "% " + until(t.in);
+        tick.title = "next " + HOURLY_GAIN() + "% around "
+          + new Date(t.at).toISOString().slice(11,16) + " UTC";
       }
       row.appendChild(tick);
 
@@ -2637,18 +2774,53 @@ function openNextMenu(anchor, fromIdx){
   }
 
   m.appendChild(body);
+
+  // footer: the rules these numbers come from, shared by everyone
+  const manage = document.createElement("button");
+  manage.className = "next-manage";
+  manage.title = "Burning rate, leave penalty and the curfew window";
+  const mic = document.createElement("span");
+  mic.className = "m-ic";
+  mic.innerHTML = slidersSVG();
+  const mlab = document.createElement("span");
+  mlab.className = "m-label";
+  mlab.textContent = "Manage projections";
+  const mgo = document.createElement("span");
+  mgo.className = "m-go";
+  mgo.innerHTML = chevron("right");
+  manage.append(mic, mlab, mgo);
+  manage.onclick = () => { closeMenu(); openHelp("projGroup"); };
+  m.appendChild(manage);
+
   document.body.appendChild(m);
 
   const r = anchor.getBoundingClientRect();
-  const w = m.offsetWidth, hh = m.offsetHeight;
+  const w = m.offsetWidth, hh2 = m.offsetHeight;
   let left = Math.min(r.left, window.innerWidth - w - 10);
-  let top = r.bottom + 6;
-  if(top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 6);
-  m.style.left = Math.max(8, left) + "px";
+  left = Math.max(8, left);
+  let top = r.bottom + 10;
+  let flip = false;
+  if(top + hh2 > window.innerHeight - 8){
+    top = Math.max(8, r.top - hh2 - 10);
+    flip = true;
+  }
+  m.style.left = left + "px";
   m.style.top = top + "px";
+  if(flip) m.classList.add("flip");
+  // sit the caret under the middle of the bar, wherever the box ended up
+  const centre = (r.left + r.width / 2) - left;
+  const edge = Math.max(16, w - 16);
+  m.style.setProperty("--caret", Math.min(edge, Math.max(16, centre)) + "px");
   menuEl = m;
   menuOwner = anchor;
   anchor.classList.add("open");     // flips the chevron on the bar
+}
+
+function slidersSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="1.9" stroke-linecap="round">'
+    + '<path d="M3 7h11M18 7h3M3 17h4M11 17h10"/>'
+    + '<circle cx="16" cy="7" r="2.1"/><circle cx="9" cy="17" r="2.1"/></svg>';
 }
 
 /* ---------------- the bench ---------------- */
