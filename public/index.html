@@ -611,7 +611,35 @@
     border-bottom:1px solid var(--line-soft);
   }
   .drawer-title{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--cyan)}
-  .listeners{font-size:10px;color:var(--dim);white-space:nowrap}
+  .listeners{
+    font:inherit;font-size:10px;color:var(--dim);white-space:nowrap;
+    padding:3px 6px;border-radius:6px;border:1px solid transparent;
+    background:none;cursor:pointer;
+  }
+  .listeners:hover{color:var(--text);border-color:var(--line);background:rgba(255,255,255,.04)}
+  /* the list of who actually has it on */
+  .whobox{
+    position:absolute;left:10px;top:38px;z-index:40;min-width:150px;max-width:210px;
+    padding:7px;border-radius:10px;
+    background:#0b131c;border:1px solid rgba(34,211,238,.35);
+    box-shadow:0 16px 36px rgba(0,0,0,.7);
+    max-height:220px;overflow-y:auto;scrollbar-width:thin;
+  }
+  .whobox::-webkit-scrollbar{width:7px}
+  .whobox::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
+  .who-head{
+    font-size:8.5px;font-weight:700;letter-spacing:.16em;color:var(--dim);
+    padding:2px 5px 6px;
+  }
+  .who-row{display:flex;align-items:center;gap:7px;padding:5px 5px;border-radius:6px}
+  .who-row.me{background:rgba(34,211,238,.10)}
+  .who-dot{width:6px;height:6px;border-radius:50%;flex:none;background:#3f556a}
+  .who-nm{
+    flex:1;min-width:0;font-family:var(--name-face);font-size:11.5px;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .who-you{font-size:8.5px;letter-spacing:.1em;color:var(--cyan);flex:none}
+  .who-empty{padding:4px 5px 6px;font-size:11px;color:var(--dim)}
   .listeners.some{color:#c4b5fd}
   .listen-btn{margin-left:auto;font-size:10.5px;padding:5px 10px}
   .skip-btn{font-size:10.5px;padding:5px 10px}
@@ -643,7 +671,9 @@
      panel rather than fighting the player for the now-playing box */
   .drawer-art{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
   .drawer-art[hidden]{display:none}
-  .drawer > *:not(.drawer-art){position:relative;z-index:1}
+  /* the whobox is excluded: it positions itself against the drawer, and this
+     rule would otherwise force it back to relative and drop it in the flow */
+  .drawer > *:not(.drawer-art):not(.whobox){position:relative;z-index:1}
   .art-media{
     position:absolute;inset:0;width:100%;height:100%;display:none;
     object-fit:cover;background-size:cover;background-position:center;
@@ -1279,7 +1309,7 @@
 
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
-      <span class="listeners" id="listenCount" title="People with the music on right now">0 listening</span>
+      <button class="listeners" id="listenCount" title="Who has the music on right now">0 listening</button>
       <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
       <button class="ghost skip-btn" id="skipBtn" title="Skip to the next song">skip</button>
       <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
@@ -3638,6 +3668,7 @@ whoBtn.onclick = () => {
     if(window.Notification && Notification.permission === "default") Notification.requestPermission();
   } catch(e){}
   renameMyChips(old);
+  tellListening();          // the listening list shows names, so refresh it
 };
 
 // you claimed a chip, then changed your display name — keep the two in step
@@ -3948,20 +3979,93 @@ if(!isFinite(musicVol)) musicVol = 35;
 
 let ytPlayer = null, ytReady = false, ytWanted = null, titleSent = {};
 
-let listenerCount = 0;
-socket.on("listeners", n => {
-  listenerCount = (typeof n === "number") ? n : 0;
+let listenerCount = 0, listenerNames = [];
+socket.on("listeners", v => {
+  if(v && typeof v === "object"){
+    listenerCount = Number(v.n) || 0;
+    listenerNames = Array.isArray(v.who) ? v.who : [];
+  } else {
+    listenerCount = (typeof v === "number") ? v : 0;
+    listenerNames = [];
+  }
   paintListeners();
+  if(whoBox) paintWhoBox();          // keep an open list in step
 });
 function paintListeners(){
   const el = document.getElementById("listenCount");
   if(!el) return;
   el.textContent = listenerCount + " listening";
   el.classList.toggle("some", listenerCount > 0);
+  el.title = listenerCount
+    ? "Who has the music on right now: " + listenerNames.join(", ")
+    : "Nobody has the music on right now";
 }
 function tellListening(){
-  socket.emit("listening", listening);
+  socket.emit("listening", { on: listening, who: me });
 }
+
+/* ---- who's listening ---- */
+let whoBox = null;
+function closeWhoBox(){
+  if(whoBox){ whoBox.remove(); whoBox = null; }
+  document.removeEventListener("click", whoBoxAway, true);
+}
+function whoBoxAway(e){
+  if(whoBox && !whoBox.contains(e.target) && e.target.id !== "listenCount") closeWhoBox();
+}
+function paintWhoBox(){
+  if(!whoBox) return;
+  whoBox.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "who-head";
+  head.textContent = "LISTENING NOW";
+  whoBox.appendChild(head);
+
+  if(!listenerNames.length){
+    const e = document.createElement("div");
+    e.className = "who-empty";
+    e.textContent = "Nobody has the music on.";
+    whoBox.appendChild(e);
+    return;
+  }
+  // your own name first, so you can see at a glance whether you're counted
+  const mine = listenerNames.filter(n => n === me);
+  const rest = listenerNames.filter(n => n !== me);
+  let first = true;
+  mine.concat(rest).forEach(n => {
+    const row = document.createElement("div");
+    row.className = "who-row" + (first && mine.length ? " me" : "");
+    const dot = document.createElement("span");
+    dot.className = "who-dot";
+    const lit = colorByName[n.toLowerCase()];
+    if(lit){ dot.style.background = lit; dot.style.boxShadow = "0 0 8px -1px " + lit; }
+    const nm = document.createElement("span");
+    nm.className = "who-nm";
+    nm.textContent = n;
+    if(lit) nm.style.color = lit;
+    row.append(dot, nm);
+    if(first && mine.length){
+      const tag = document.createElement("span");
+      tag.className = "who-you";
+      tag.textContent = "you";
+      row.appendChild(tag);
+    }
+    whoBox.appendChild(row);
+    first = false;
+  });
+}
+document.getElementById("listenCount").onclick = e => {
+  e.stopPropagation();
+  if(whoBox){ closeWhoBox(); return; }
+  whoBox = document.createElement("div");
+  whoBox.className = "whobox";
+  whoBox.onclick = ev => ev.stopPropagation();
+  document.getElementById("drawer").appendChild(whoBox);
+  paintWhoBox();
+  // capture phase on document has already passed for this very click, so this
+  // cannot catch the click that opened it — no need to defer the wiring
+  document.addEventListener("click", whoBoxAway, true);
+};
 
 socket.on("music", m => {
   const before = music.playing && music.playing.id;
@@ -4334,7 +4438,7 @@ function syncPlayer(){
   if(ytWanted !== cur.id || ytVideo !== cur.videoId){
     ytWanted = cur.id;
     ytVideo = cur.videoId;
-    lastPos = null;
+    forgetSeekWatch();
     hushPlayer(2500);                     // a fresh load throws off its own state changes
     if(ytPlayer.loadVideoById) ytPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: Math.floor(want) });
     setTimeout(() => { reportTitle(); reportDuration(); }, 1200);
@@ -4350,9 +4454,10 @@ function syncPlayer(){
     const PAUSED = window.YT && window.YT.PlayerState ? window.YT.PlayerState.PAUSED : 2;
     const PLAYING = window.YT && window.YT.PlayerState ? window.YT.PlayerState.PLAYING : 1;
     if(cur.paused && st === PLAYING && ytPlayer.pauseVideo){
-      hushPlayer();                       // we're following, not deciding
+      hushPlayer(2500);                   // we're following, not deciding
       ytPlayer.pauseVideo();
       if(ytPlayer.seekTo) ytPlayer.seekTo(want, true);
+      forgetSeekWatch();
     } else if(!cur.paused && st === PAUSED && ytPlayer.playVideo){
       hushPlayer();
       ytPlayer.playVideo();
@@ -4366,30 +4471,86 @@ function syncPlayer(){
     if(ytPlayer.getCurrentTime){
       const at = ytPlayer.getCurrentTime();
       if(Math.abs(at - want) > 3 && ytPlayer.seekTo){
-        hushPlayer(900);
+        // long enough to cover the seek and the buffering that follows it,
+        // or the catch-up gets reported straight back as a drag
+        hushPlayer(3000);
         ytPlayer.seekTo(want, true);
-        lastPos = want;
+        forgetSeekWatch();
       }
     }
   } catch(e){}
 }
 
 /* Watch for someone dragging the scrubber. The API gives no seek event, so
-   compare where the song is against where it was a moment ago — a jump means
-   a seek, and the server moves the shared clock so everyone follows. */
-let lastPos = null, lastPosAt = 0;
-setInterval(() => {
-  if(!listening || !ytPlayer || !ytPlayer.getCurrentTime || !music.playing) return;
-  let at;
-  try { at = ytPlayer.getCurrentTime(); } catch(e){ return; }
-  if(typeof at !== "number" || !isFinite(at)) return;
+   compare where the song is against where it was a moment ago.
 
+   The hard part is that a browser falling behind looks exactly like a drag.
+   Buffering, a throttled background tab or a slow connection all stop
+   getCurrentTime() while the wall clock carries on, and that reads as a jump
+   backwards. Reporting it drags the whole room back to whichever machine is
+   struggling — and because every listener is watching, they take turns doing
+   it to each other and the song snaps back and forth forever.
+
+   So a jump only counts when all of these hold:
+     - the player says it is really PLAYING, not buffering or cued
+     - we did not just move it ourselves to follow the room
+     - it is a big jump, and it is STILL there a second later
+     - we have not reported one in the last few seconds
+   Falling behind is left to syncPlayer, which catches this browser up to the
+   room. That is the right direction of travel: the laggard follows, rather
+   than everyone else being rewound to it. */
+const SEEK_JUMP = 4;             // seconds; below this it is drift, not a drag
+let lastPos = null, lastPosAt = 0;
+let seekWatch = null;            // a jump seen once, waiting for confirmation
+let lastSeekSent = 0;
+
+function forgetSeekWatch(){ lastPos = null; seekWatch = null; }
+
+setInterval(() => {
+  if(!listening || !ytPlayer || !ytPlayer.getCurrentTime || !music.playing
+     || music.playing.paused){
+    forgetSeekWatch();
+    return;
+  }
+
+  let at, st;
+  try {
+    at = ytPlayer.getCurrentTime();
+    st = ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : 1;
+  } catch(e){ forgetSeekWatch(); return; }
+  // A player mid-reload or mid-error hands back nothing useful for a few ticks.
+  // The baseline has to be dropped when that happens, not just skipped: leaving
+  // lastPosAt behind means the next healthy reading is measured against a
+  // timestamp several seconds old, the gap reads as an enormous jump, and this
+  // browser reports wherever it happens to be as a drag. That is the loop —
+  // every little hiccup yanks the whole room back to one machine's position.
+  if(typeof at !== "number" || !isFinite(at)){ forgetSeekWatch(); return; }
+
+  const PLAYING = (window.YT && window.YT.PlayerState) ? window.YT.PlayerState.PLAYING : 1;
   const now = Date.now();
+
+  // buffering, cued, or a seek we made ourselves: the reading tells us nothing
+  if(st !== PLAYING || !userDrivenChange()){
+    lastPos = at; lastPosAt = now; seekWatch = null;
+    return;
+  }
+
   if(lastPos !== null){
     const elapsed = (now - lastPosAt) / 1000;
-    const drifted = at - lastPos - elapsed;          // how far it moved beyond simply playing
-    if(Math.abs(drifted) > 2.5 && Math.abs(at - expectedOffset(music.playing)) > 2.5){
-      musicAction({ type:"music-seek", id: music.playing.id, seconds: Math.round(at) });
+    const drifted = at - lastPos - elapsed;      // moved beyond simply playing on
+    const offRoom = at - expectedOffset(music.playing);
+
+    if(seekWatch !== null){
+      // a real drag is still sitting where it landed, and still away from the
+      // room's clock. a one-off stall has already caught itself up by now.
+      if(Math.abs(at - seekWatch) < 1.75 && Math.abs(offRoom) > SEEK_JUMP
+         && now - lastSeekSent > 4000){
+        lastSeekSent = now;
+        musicAction({ type:"music-seek", id: music.playing.id, seconds: Math.round(at) });
+      }
+      seekWatch = null;
+    } else if(Math.abs(drifted) > SEEK_JUMP && Math.abs(offRoom) > SEEK_JUMP){
+      seekWatch = at + elapsed;                  // where it lands next tick if real
     }
   }
   lastPos = at; lastPosAt = now;

@@ -160,7 +160,16 @@ function offline(id) {
 
 /* ---------------- realtime ---------------- */
 let online = 0;      // everyone connected, whichever region they're looking at
-let listeners = 0;   // how many of them have the music playing
+// who has the music playing, by socket, so the drawer can name them and not
+// just count them. a Map keyed on socket id keeps a refresh or a second tab
+// from leaving a ghost behind — the entry goes when that socket does.
+const listeners = new Map();   // socket.id -> display name
+function listenersView() {
+  const names = [...listeners.values()].filter(Boolean);
+  names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  return { n: listeners.size, who: names };
+}
+function broadcastListeners() { io.emit("listeners", listenersView()); }
 
 function snapshot(region) {
   return { region, channels: state[region].channels, log: state[region].log };
@@ -283,6 +292,7 @@ function musicNote(msg) {
 }
 const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
 let lastSeekNote = 0;
+let lastSeekAt = 0;
 let songHandle = null;
 
 function startNext() {
@@ -363,7 +373,7 @@ io.on("connection", socket => {
     socket.emit("music", musicView());
     socket.emit("musiclog", state.musicLog);
     socket.emit("proj", state.proj);
-    socket.emit("listeners", listeners);
+    socket.emit("listeners", listenersView());
     presence();
   });
 
@@ -611,8 +621,21 @@ io.on("connection", socket => {
         // somebody dragged the scrubber — move the shared clock so everyone follows
         const cur = state.music.playing;
         if (!cur || cur.id !== a.id) return;
+        if (cur.paused) return;                  // nothing is running to move
         const secs = Math.max(0, Math.min(60 * 60 * 6, Math.round(Number(a.seconds))));
         if (!isFinite(secs)) return;
+
+        // Backstop against a feedback loop. A listener whose player stalls
+        // reports its own lagging position as a seek; that rewinds everyone,
+        // whose players then correct, which their watchers can read as another
+        // seek. Two of these fighting will yank a song back and forth forever.
+        // The client filters most of it out, but the shared clock is the thing
+        // being damaged, so it defends itself too.
+        const already = (Date.now() - cur.startedAt) / 1000;
+        if (Math.abs(secs - already) < 3) return;      // it is already there
+        if (Date.now() - lastSeekAt < 1500) return;    // an echo of the last one
+        lastSeekAt = Date.now();
+
         cur.startedAt = Date.now() - secs * 1000;
         cur.at = secs;
         // a drag fires this repeatedly — one line per few seconds is plenty
@@ -811,11 +834,14 @@ io.on("connection", socket => {
   // whether this browser currently has the queue playing
   let isListening = false;
   socket.on("listening", v => {
-    const on = !!v;
-    if (on === isListening) return;
+    // older clients sent a bare boolean; newer ones send the name along with it
+    const on = (v && typeof v === "object") ? !!v.on : !!v;
+    const who = clean((v && typeof v === "object") ? v.who : "", 24) || "Guest";
+    if (on === isListening && listeners.get(socket.id) === who) return;
     isListening = on;
-    listeners = Math.max(0, listeners + (on ? 1 : -1));
-    io.emit("listeners", listeners);
+    if (on) listeners.set(socket.id, who);
+    else listeners.delete(socket.id);
+    broadcastListeners();
   });
 
   socket.on("mvp", m => {
@@ -842,10 +868,10 @@ io.on("connection", socket => {
   });
 
   socket.on("disconnect", () => {
-    if (isListening) {
+    if (isListening || listeners.has(socket.id)) {
       isListening = false;
-      listeners = Math.max(0, listeners - 1);
-      io.emit("listeners", listeners);
+      listeners.delete(socket.id);
+      broadcastListeners();
     }
     if (!viewing) return;
     online = Math.max(0, online - 1);
