@@ -206,7 +206,8 @@ function startNext() {
   const next = state.music.queue.shift();
   state.music.playing = next
     ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by,
-        token: next.token, startedAt: Date.now(), duration: next.duration || 0 }
+        token: next.token, startedAt: Date.now(), duration: next.duration || 0,
+        paused: false, at: 0 }
     : null;
   scheduleSongEnd();
 }
@@ -217,7 +218,7 @@ function scheduleSongEnd() {
   clearTimeout(songHandle);
   songHandle = null;
   const cur = state.music.playing;
-  if (!cur || !cur.duration) return;
+  if (!cur || !cur.duration || cur.paused) return;   // a paused song has no end coming
   const left = cur.startedAt + cur.duration * 1000 + 2000 - Date.now();
   if (left <= 0) {
     startNext();
@@ -496,6 +497,27 @@ io.on("connection", socket => {
         if (q) q.duration = secs;
         return;
       }
+      case "music-pause": {
+        // pausing is shared: it stops for everyone, and resumes for everyone
+        const cur = state.music.playing;
+        if (!cur || cur.id !== a.id) return;
+        const want = !!a.paused;
+        if (want === !!cur.paused) return;
+        if (want) {
+          const at = Number(a.seconds);
+          cur.at = isFinite(at) && at >= 0 ? at : (Date.now() - cur.startedAt) / 1000;
+          cur.paused = true;
+          musicNote(`${by} paused the music`);
+        } else {
+          cur.paused = false;
+          cur.startedAt = Date.now() - (cur.at || 0) * 1000;
+          musicNote(`${by} started it again`);
+        }
+        scheduleSongEnd();
+        persist();
+        broadcastMusic();
+        return;
+      }
       case "music-seek": {
         // somebody dragged the scrubber — move the shared clock so everyone follows
         const cur = state.music.playing;
@@ -503,6 +525,7 @@ io.on("connection", socket => {
         const secs = Math.max(0, Math.min(60 * 60 * 6, Math.round(Number(a.seconds))));
         if (!isFinite(secs)) return;
         cur.startedAt = Date.now() - secs * 1000;
+        cur.at = secs;
         scheduleSongEnd();
         persist();
         broadcastMusic();

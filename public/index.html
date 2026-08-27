@@ -521,6 +521,16 @@
     opacity:.3;filter:saturate(1.1);
   }
   .art-still{background-repeat:no-repeat}
+  .viz{
+    position:absolute;left:0;right:0;bottom:0;width:100%;height:100%;
+    z-index:0;pointer-events:none;mix-blend-mode:screen;
+  }
+  .viz[hidden]{display:none}
+  .viz-btn{width:100%;font-size:10.5px;padding:6px 10px}
+  .viz-btn.on,
+  html.has-bg .viz-btn.on{
+    color:#04202a;background:#5eead4;border-color:#5eead4;font-weight:800;
+  }
   .drawer-art::after{
     content:"";position:absolute;inset:0;
     background:linear-gradient(180deg,rgba(10,17,25,.55),rgba(10,17,25,.8));
@@ -1053,6 +1063,7 @@
         <video id="artVideo" class="art-media" autoplay muted loop playsinline></video>
         <div id="artStill" class="art-media art-still"></div>
       </div>
+      <canvas class="viz" id="viz" hidden aria-hidden="true"></canvas>
       <div class="now-label">NOW PLAYING</div>
       <div class="now-title" id="nowTitle">nothing yet</div>
       <div class="now-by" id="nowBy"></div>
@@ -1062,6 +1073,9 @@
       </div>
       <div class="bgvid-row" id="bgvidRow" hidden>
         <button class="ghost bgvid-btn" id="bgvidBtn" title="Show the artwork loop behind the queue">art: on</button>
+      </div>
+      <div class="bgvid-row" id="vizRow">
+        <button class="ghost viz-btn" id="vizBtn" title="React to the actual sound (needs tab audio)">beat bars: off</button>
       </div>
       <div class="vol-row" id="volRow" hidden>
         <span class="vol-ic">🔈</span>
@@ -1559,7 +1573,11 @@ const HELP_HTML = `
      in the drawer, and that choice is yours alone. Once it's on, playback carries on while
      you're on another tab or in game, and everyone listening is at roughly the same point
      in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
-  <p><span class="k">skip</span> moves everyone to the next song.</p>
+  <p><span class="k">skip</span> moves everyone to the next song. Pausing is shared too —
+     if you pause, it pauses for everybody, and resumes where it stopped.</p>
+  <p><span class="k">beat bars</span> makes the bars react to the actual sound. The browser
+     will ask you to share a tab and tick “share tab audio” — that's the only way a page can
+     read audio coming from YouTube. It's per person and off by default.</p>
   <p><span class="k">video wallpaper</span> throws whatever is playing across the whole page
      and the queue box, replacing your usual background. Turn it off and the background and
      the artwork come straight back. It only changes what you see.</p>
@@ -3464,6 +3482,11 @@ function syncBgPlayer(){
     return;
   }
   try {
+    if(cur.paused){
+      if(ytBgPlayer.pauseVideo) ytBgPlayer.pauseVideo();
+      return;
+    }
+    if(ytBgPlayer.playVideo) ytBgPlayer.playVideo();
     if(ytBgPlayer.getCurrentTime && Math.abs(ytBgPlayer.getCurrentTime() - want) > 3){
       ytBgPlayer.seekTo(want, true);
     }
@@ -3561,7 +3584,7 @@ function renderMusic(){
   if(!t || !list) return;
 
   const cur = music.playing;
-  t.textContent = cur ? (cur.title || "loading…") : "nothing playing";
+  t.textContent = cur ? ((cur.paused ? "paused — " : "") + (cur.title || "loading…")) : "nothing playing";
   b.textContent = cur ? "added by " + cur.by : "";
 
   list.innerHTML = "";
@@ -3628,7 +3651,17 @@ function ensurePlayer(){
         if(e.data === window.YT.PlayerState.ENDED && music.playing){
           socket.emit("action", { type:"music-ended", id: music.playing.id, region });
         }
-        if(e.data === window.YT.PlayerState.PLAYING){ reportTitle(); reportDuration(); }
+        if(e.data === window.YT.PlayerState.PLAYING){
+          reportTitle(); reportDuration();
+          if(music.playing && music.playing.paused){
+            socket.emit("action", { type:"music-pause", id: music.playing.id, paused:false, region });
+          }
+        }
+        if(e.data === window.YT.PlayerState.PAUSED && music.playing && !music.playing.paused){
+          let at = 0;
+          try { at = ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0; } catch(err){}
+          socket.emit("action", { type:"music-pause", id: music.playing.id, paused:true, seconds: at, region });
+        }
       },
       onError: () => {
         // one clean rebuild, then move on rather than sitting on a dead player
@@ -3682,6 +3715,7 @@ function reportTitle(){
 }
 // where the song should be right now, according to the shared clock
 function expectedOffset(cur){
+  if(cur.paused) return Math.max(0, cur.at || 0);   // paused: it sits where it stopped
   return Math.max(0, (Date.now() - cur.startedAt) / 1000);
 }
 
@@ -3716,6 +3750,21 @@ function syncPlayer(){
   }
 
   syncBgPlayer();
+
+  // paused for everyone, or playing for everyone
+  try {
+    const st = ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : null;
+    const PAUSED = window.YT && window.YT.PlayerState ? window.YT.PlayerState.PAUSED : 2;
+    const PLAYING = window.YT && window.YT.PlayerState ? window.YT.PlayerState.PLAYING : 1;
+    if(cur.paused && st === PLAYING && ytPlayer.pauseVideo){
+      ytPlayer.pauseVideo();
+      if(ytPlayer.seekTo) ytPlayer.seekTo(want, true);
+    } else if(!cur.paused && st === PAUSED && ytPlayer.playVideo){
+      ytPlayer.playVideo();
+    }
+  } catch(e){}
+
+  if(cur.paused) return;
 
   // same song: if we've drifted from the shared clock, catch up
   try {
@@ -3754,6 +3803,114 @@ paintWall();
 paintListeners();
 tellListening();
 if(listening) ensurePlayer();
+
+/* ---------------- beat bars ----------------
+   A YouTube iframe is cross-origin, so its audio can't be read directly.
+   The browser will hand over tab audio if the person shares it, and that
+   stream can be analysed — hence the one-off prompt.
+   ------------------------------------------------------------------ */
+let vizOn = false, vizStream = null, vizCtx = null, vizAnalyser = null, vizRaf = null, vizData = null;
+const vizBtn = document.getElementById("vizBtn");
+const vizCanvas = document.getElementById("viz");
+
+function paintViz(){
+  vizBtn.textContent = vizOn ? "beat bars: on" : "beat bars: off";
+  vizBtn.classList.toggle("on", vizOn);
+  if(vizCanvas) vizCanvas.hidden = !vizOn;
+}
+
+async function startViz(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+    toast("This browser can't share tab audio", true);
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true, audio: true, preferCurrentTab: true
+    });
+    const audio = stream.getAudioTracks();
+    if(!audio.length){
+      stream.getTracks().forEach(t => t.stop());
+      toast("Pick a tab and tick “share tab audio”", true);
+      return;
+    }
+    stream.getVideoTracks().forEach(t => t.stop());   // only the sound is wanted
+    vizStream = stream;
+    vizCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = vizCtx.createMediaStreamSource(stream);
+    vizAnalyser = vizCtx.createAnalyser();
+    vizAnalyser.fftSize = 512;
+    vizAnalyser.smoothingTimeConstant = 0.75;
+    src.connect(vizAnalyser);                          // deliberately not to the speakers
+    vizData = new Uint8Array(vizAnalyser.frequencyBinCount);
+    audio[0].onended = stopViz;
+    vizOn = true;
+    paintViz();
+    drawViz();
+  } catch(e){
+    toast("Sound sharing was cancelled", true);
+  }
+}
+
+function stopViz(){
+  vizOn = false;
+  cancelAnimationFrame(vizRaf); vizRaf = null;
+  if(vizStream) vizStream.getTracks().forEach(t => t.stop());
+  vizStream = null;
+  try { if(vizCtx) vizCtx.close(); } catch(e){}
+  vizCtx = null; vizAnalyser = null;
+  const ctx = vizCanvas && vizCanvas.getContext && vizCanvas.getContext("2d");
+  if(ctx) ctx.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
+  paintViz();
+}
+
+vizBtn.onclick = () => { vizOn ? stopViz() : startViz(); };
+
+function drawViz(){
+  vizRaf = requestAnimationFrame(drawViz);
+  if(!vizAnalyser || !vizCanvas || document.hidden) return;
+  const ctx = vizCanvas.getContext && vizCanvas.getContext("2d");
+  if(!ctx) return;
+
+  // keep the canvas matched to its box
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = vizCanvas.clientWidth, h = vizCanvas.clientHeight;
+  if(vizCanvas.width !== w * dpr || vizCanvas.height !== h * dpr){
+    vizCanvas.width = w * dpr; vizCanvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  vizAnalyser.getByteFrequencyData(vizData);
+
+  const bars = 40;
+  const gap = 2;
+  const bw = (w - gap * (bars - 1)) / bars;
+  const useable = Math.floor(vizData.length * 0.7);       // the top end is mostly silence
+
+  const grad = ctx.createLinearGradient(0, h, 0, 0);
+  grad.addColorStop(0, "rgba(34,211,238,.95)");
+  grad.addColorStop(.55, "rgba(167,139,250,.9)");
+  grad.addColorStop(1, "rgba(244,114,182,.85)");
+  ctx.fillStyle = grad;
+
+  for(let i = 0; i < bars; i++){
+    // low frequencies get more of the width, which is where the beat lives
+    const from = Math.floor(Math.pow(i / bars, 1.7) * useable);
+    const to = Math.max(from + 1, Math.floor(Math.pow((i + 1) / bars, 1.7) * useable));
+    let sum = 0;
+    for(let j = from; j < to; j++) sum += vizData[j];
+    const level = (sum / (to - from)) / 255;
+    const bh = Math.max(2, level * h * 0.9);
+    const x = i * (bw + gap);
+    const r = Math.min(bw / 2, 3);
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x, h - bh, bw, bh, r);
+    else ctx.rect(x, h - bh, bw, bh);
+    ctx.fill();
+  }
+}
+paintViz();
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
