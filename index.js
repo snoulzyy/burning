@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 const CHANNELS = 40;
 const CAP = 4;
 const LOG_MAX = 300;
+const MUSIC_LOG_MAX = 120;      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
 // Add a region here and it gets its own URL, its own board, its own chat.
@@ -79,6 +80,21 @@ function hydrate(saved) {
   const cur = state.music.playing;
   if (cur && (typeof cur.startedAt !== "number" || !cur.videoId)) state.music.playing = null;
   if (!state.mvpTimer || typeof state.mvpTimer !== "object") state.mvpTimer = null;
+
+  // Music is the one thing that happens everywhere at once, so its log is
+  // global: it shows in the activity pane of every board, whichever board the
+  // action was sent from. It used to sit in the chat — move those across, once.
+  if (!Array.isArray(state.musicLog)) state.musicLog = [];
+  const keepChat = [];
+  state.chat.forEach(e => {
+    if (e && e.sys === "music") state.musicLog.push(e); else keepChat.push(e);
+  });
+  state.chat = keepChat;
+  state.musicLog.sort((a, b) => a.t - b.t);
+  if (state.musicLog.length > MUSIC_LOG_MAX) {
+    state.musicLog.splice(0, state.musicLog.length - MUSIC_LOG_MAX);
+  }
+
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
 }
@@ -194,12 +210,20 @@ function musicView() {
 function broadcastMusic() {
   io.emit("music", musicView());
 }
-// music happens everywhere at once, so it belongs in the shared stream
-function musicNote(msg) {
-  state.chat.push({ t: Date.now(), who: null, sys: "music", msg });
-  if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
-  broadcastChat();
+// music happens everywhere at once, so this log is global — every board's
+// activity pane shows the same lines, whichever board they were sent from
+function broadcastMusicLog() {
+  io.emit("musiclog", state.musicLog);
 }
+function musicNote(msg) {
+  state.musicLog.push({ t: Date.now(), sys: "music", msg });
+  if (state.musicLog.length > MUSIC_LOG_MAX) {
+    state.musicLog.splice(0, state.musicLog.length - MUSIC_LOG_MAX);
+  }
+  broadcastMusicLog();
+}
+const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+let lastSeekNote = 0;
 let songHandle = null;
 
 function startNext() {
@@ -278,6 +302,7 @@ io.on("connection", socket => {
     socket.emit("mvpmsg", state.mvpMsg);
     socket.emit("mvptimer", state.mvpTimer);
     socket.emit("music", musicView());
+    socket.emit("musiclog", state.musicLog);
     socket.emit("listeners", listeners);
     presence();
   });
@@ -465,12 +490,14 @@ io.on("connection", socket => {
         const cur = state.music.playing;
         if (cur && cur.id === a.id) {
           if (cur.token !== token) return;      // only whoever queued it
+          musicNote(`${by} removed the playing song`);
           startNext();
         } else {
           const i = state.music.queue.findIndex(t => t.id === a.id);
           if (i === -1) return;
           if (state.music.queue[i].token !== token) return;
-          state.music.queue.splice(i, 1);
+          const [gone] = state.music.queue.splice(i, 1);
+          musicNote(`${by} removed ${gone.title || "a song"} from the queue`);
         }
         persist();
         broadcastMusic();
@@ -528,6 +555,11 @@ io.on("connection", socket => {
         if (!isFinite(secs)) return;
         cur.startedAt = Date.now() - secs * 1000;
         cur.at = secs;
+        // a drag fires this repeatedly — one line per few seconds is plenty
+        if (Date.now() - lastSeekNote > 4000) {
+          lastSeekNote = Date.now();
+          musicNote(`${by} jumped to ${mmss(secs)}`);
+        }
         scheduleSongEnd();
         persist();
         broadcastMusic();

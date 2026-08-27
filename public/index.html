@@ -276,55 +276,64 @@
 
   /* ---------------- next up (floats over the board) ---------------- */
   .nextmenu{
-    position:fixed;z-index:60;width:246px;padding:9px;border-radius:12px;
+    position:fixed;z-index:60;width:298px;padding:10px;border-radius:12px;
     background:#0a1119;border:1px solid rgba(167,139,250,.45);
     box-shadow:0 18px 44px rgba(0,0,0,.7), 0 0 16px -6px rgba(167,139,250,.8);
   }
-  .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+  .nextmenu .mhead{display:flex;align-items:center;gap:8px;margin:0 0 9px}
   .nextmenu h4{margin:0;font:inherit;font-size:9.5px;font-weight:600;letter-spacing:.16em;color:#c4b5fd}
-  .grp{display:flex;align-items:center;gap:3px;margin-left:auto}
-  .grp span{font-size:10px;color:var(--dim);letter-spacing:.06em}
-  .grp b{font-size:11.5px;color:var(--text);min-width:12px;text-align:center}
+  .grp{display:flex;align-items:center;gap:4px;margin-left:auto}
+  .grp span{font-size:9px;letter-spacing:.14em;color:var(--dim)}
+  .grp b{
+    font-size:11.5px;font-weight:700;color:var(--text);min-width:24px;text-align:center;
+    padding:2px 0;border-radius:5px;background:var(--raise);border:1px solid var(--line);
+  }
   .grp button{
-    width:17px;height:17px;display:grid;place-items:center;padding:0;line-height:0;
+    width:19px;height:19px;display:grid;place-items:center;padding:0;line-height:0;
     font:inherit;font-size:12px;color:var(--dim);cursor:pointer;
-    background:var(--raise);border:1px solid var(--line);border-radius:4px;
+    background:var(--raise);border:1px solid var(--line);border-radius:5px;
   }
   .grp button:hover{color:var(--cyan);border-color:rgba(34,211,238,.5)}
-  .n-soon{margin-left:auto;font-size:10px;color:var(--amber);white-space:nowrap}
+  .n-soon{font-size:10px;color:var(--amber);white-space:nowrap}
   .next-row.soon{opacity:.9}
   .next-row.soon .n-ch{color:var(--amber)}
   .next-body{
-    display:flex;flex-direction:column;max-height:300px;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;max-height:320px;overflow-y:auto;overscroll-behavior:contain;
   }
-  .next-body::-webkit-scrollbar{width:7px}
-  .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .next-body::-webkit-scrollbar{width:7px}
   .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .next-row{
-    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;
-    background:none;border:1px solid transparent;cursor:pointer;font:inherit;text-align:left;
+    display:flex;align-items:center;gap:9px;padding:10px 8px;border-radius:7px;
+    background:none;border:0;border-bottom:1px solid var(--line-soft);
+    cursor:pointer;font:inherit;text-align:left;
   }
-  .next-row:hover{background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.4)}
-  .next-row .n-ch{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text)}
-  .next-row .n-pct{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px}
-  .next-row .n-slots{font-size:10px;color:var(--dim);margin-left:6px}
+  .next-row:last-child{border-bottom:0}
+  .next-row:hover{background:rgba(167,139,250,.12)}
+  .next-row .n-ch{font-size:12.5px;font-weight:700;letter-spacing:.06em;color:var(--text);flex:none;min-width:48px}
+  .next-row .n-pct{font-size:10.5px;font-weight:800;padding:3px 7px;border-radius:5px;flex:none}
+  /* status takes the slack so the slot count and the arrow line up down the list */
   .next-row .n-tick{
-    margin-left:auto;font-size:9.5px;font-weight:700;color:#4ade80;
-    white-space:nowrap;text-align:right;
+    flex:1;min-width:0;font-size:10.5px;font-weight:700;color:#4ade80;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;
   }
   .next-row .n-tick.flat{color:var(--dim)}
-  .next-row .n-tick.frozen{color:#93c5fd}
-  .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;margin-left:2px}
-  .next-row .n-go svg{width:11px;height:11px;display:block}
+  .next-row .n-tick.frozen{color:#60a5fa}
+  .next-row .n-slots{font-size:10.5px;color:var(--dim);flex:none;min-width:44px}
+  .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;flex:none;margin-left:2px}
+  .next-row .n-go svg{width:12px;height:12px;display:block}
   .next-row:hover .n-go{color:#c4b5fd}
-  .next-row .n-soon{margin-left:6px}
+  /* curfew card: what's frozen and until when, rather than a bare warning */
   .curfew{
-    margin:-2px 0 8px;padding:5px 7px;border-radius:6px;
-    font-size:9.5px;letter-spacing:.05em;color:#93c5fd;
+    display:flex;align-items:center;gap:11px;
+    margin:-2px 0 9px;padding:9px 11px;border-radius:8px;
     background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.28);
   }
-  .next-empty{padding:10px 9px;font-size:11px;color:var(--dim);line-height:1.5}
+  .curfew .flake{font-size:19px;line-height:1;color:#60a5fa;flex:none}
+  .curfew .ctext{min-width:0;line-height:1.5}
+  .curfew .cwhen{font-size:10.5px;letter-spacing:.03em;color:#bfdbfe}
+  .curfew .cstat{font-size:10px;letter-spacing:.03em;color:var(--dim)}
+  .curfew .cstat b{color:#60a5fa;font-weight:700}
+  .next-empty{padding:12px 9px;font-size:11px;color:var(--dim);line-height:1.5}
   .movebar{
     display:grid;place-items:center;
     width:calc(100% - 14px);margin:0 7px 7px;height:22px;padding:0;
@@ -338,7 +347,8 @@
     background:linear-gradient(140deg,rgba(167,139,250,.34),rgba(236,72,153,.26));
     box-shadow:0 0 14px -2px rgba(167,139,250,1);
   }
-  .movebar svg{width:13px;height:13px;display:block}
+  .movebar svg{width:13px;height:13px;display:block;transform:rotate(90deg);transition:transform .18s}
+  .movebar.open svg{transform:rotate(-90deg)}
   .timerwrap{display:inline-flex;align-items:stretch;gap:4px;margin-right:8px}
   .timerreset{
     flex:none;width:30px;display:grid;place-items:center;padding:0;cursor:pointer;
@@ -1089,15 +1099,6 @@
     <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
     <button class="gear-btn" id="helpBtn" title="Settings" aria-label="Settings"></button>
     <div class="headright">
-      <div class="toolbar">
-        <span class="bgwrap">
-          <button class="ghost" id="bgBtn" title="Turn the background video off if your machine struggles">background: on</button>
-          <input class="bgrange" id="bgRange" type="range" min="0" max="100" step="1" value="50"
-                 aria-label="Background brightness" title="Background brightness">
-        </span>
-        <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
-      <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
-      </div>
       <div class="tabsWrap">
         <nav class="tabs" id="tabs"></nav>
         <button class="tabsbar" id="tabsBar" title="Choose which tabs to show" aria-label="Choose tabs"></button>
@@ -1238,6 +1239,7 @@ function saveHiddenTabs(){
 let boards = {};        // region -> channels
 let logs = {};          // region -> activity log
 let chat = [];          // one chat, shared by every region
+let musicLog = [];      // music lines — global, shown in every board's activity pane
 let rosters = {};       // area -> people list (RD boards share one, GOB another)
 let areaOf = {};        // region -> area
 let pickedPerson = null;
@@ -1800,6 +1802,10 @@ const HELP_HTML = `
      in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
   <p><span class="k">skip</span> moves everyone to the next song. Pausing is shared too —
      if you pause, it pauses for everybody, and resumes where it stopped.</p>
+  <p>Everything that happens to the queue — queued, now playing, skipped, paused,
+     resumed, removed — is written to the <span class="k">ACTIVITY</span> panel below.
+     That's the one log that ignores which board you're on: the music is shared by
+     every board, so the lines show up on all of them.</p>
   <p><span class="k">beat bars</span> makes the bars react to the actual sound. The browser
      will ask you to share a tab and tick “share tab audio” — that's the only way a page can
      read audio coming from YouTube. It's per person and off by default.</p>
@@ -2251,6 +2257,12 @@ socket.on("chatlog", arr => {
   renderLog();
 });
 
+// the one log that ignores which board you're on — music plays for everybody
+socket.on("musiclog", arr => {
+  musicLog = Array.isArray(arr) ? arr : [];
+  renderLog();
+});
+
 let onlineCount = 0;   // everyone on the site, whichever region they're on
 socket.on("presence", p => {
   onlineCount = (p && typeof p.n === "number") ? p.n : 0;
@@ -2378,6 +2390,9 @@ try { groupCount = Math.min(10, Math.max(1, parseInt(localStorage.getItem("ct:gr
 function setGroupCount(n, anchor, fromIdx){
   groupCount = Math.min(10, Math.max(1, n));
   try { localStorage.setItem("ct:groups", groupCount) } catch(e){}
+  // close first: reopening on the same button would otherwise read as a second
+  // click on it and just toggle the whole popover shut
+  closeMenu();
   openNextMenu(anchor, fromIdx);
 }
 
@@ -2513,7 +2528,25 @@ function openNextMenu(anchor, fromIdx){
   if(inCurfew()){
     const frozen = document.createElement("div");
     frozen.className = "curfew";
-    frozen.textContent = "curfew 22:00–08:00 UTC — burning frozen";
+
+    const flake = document.createElement("span");
+    flake.className = "flake";
+    flake.textContent = "❄";
+    frozen.appendChild(flake);
+
+    const text = document.createElement("div");
+    text.className = "ctext";
+    const when = document.createElement("div");
+    when.className = "cwhen";
+    when.textContent = "Curfew " + String(CURFEW_START).padStart(2,"0")
+      + ":00–" + String(CURFEW_END).padStart(2,"0") + ":00 UTC";
+    const stat = document.createElement("div");
+    stat.className = "cstat";
+    stat.innerHTML = 'Status: <b></b>';
+    stat.querySelector("b").textContent = "BURNING (Frozen)";
+    text.append(when, stat);
+    frozen.appendChild(text);
+
     m.appendChild(frozen);
   }
 
@@ -2555,11 +2588,11 @@ function openNextMenu(anchor, fromIdx){
         tick.classList.add("flat");
         tick.title = "no reading to project from";
       } else if(t.max){
-        tick.textContent = "max";
+        tick.textContent = "Max";
         tick.classList.add("flat");
         tick.title = "already projected at 100%";
       } else if(t.frozen){
-        tick.textContent = "frozen";
+        tick.textContent = "Frozen";
         tick.classList.add("frozen");
         tick.title = "curfew — resumes 08:00 UTC, then +10% after " + until(t.in);
       } else {
@@ -2576,7 +2609,7 @@ function openNextMenu(anchor, fromIdx){
       } else {
         const slots = document.createElement("span");
         slots.className = "n-slots";
-        slots.textContent = c.taken === 0 ? "empty" : c.taken + "/" + CAP;
+        slots.textContent = c.taken === 0 ? "Empty" : c.taken + "/" + CAP;
         row.appendChild(slots);
       }
 
@@ -2615,6 +2648,7 @@ function openNextMenu(anchor, fromIdx){
   m.style.top = top + "px";
   menuEl = m;
   menuOwner = anchor;
+  anchor.classList.add("open");     // flips the chevron on the bar
 }
 
 /* ---------------- the bench ---------------- */
@@ -3151,6 +3185,7 @@ function row(en,ci){
 /* ---------------- burning % popover ---------------- */
 let menuOwner = null;
 function closeMenu(){
+  if(menuOwner && menuOwner.classList) menuOwner.classList.remove("open");
   if(menuEl){ menuEl.remove(); menuEl = null; }
   menuOwner = null;
 }
@@ -3259,8 +3294,14 @@ function paintLog(el, items, emptyMsg){
 }
 
 function renderLog(){
-  // left: what happened on this region. right: chat, shared across all of them
-  paintLog(logEl,  log.filter(x => !x.who), "No changes yet. Every board change shows up here.");
+  // left: what happened on this board, with the music log folded in. music is
+  // the one thing that isn't per-board — it plays for everyone at once, so the
+  // same lines show here whichever board you're looking at.
+  // right: chat, shared across all of them
+  const activity = log.filter(x => !x.who)
+    .concat(musicLog)
+    .sort((a, b) => a.t - b.t);
+  paintLog(logEl,  activity, "No changes yet. Every board change shows up here.");
   paintLog(chatEl, chat, "No messages yet.");
 }
 
