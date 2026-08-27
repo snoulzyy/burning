@@ -324,12 +324,27 @@
   .next-body::-webkit-scrollbar{width:7px}
   .next-body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .next-row{
-    display:flex;align-items:center;gap:11px;padding:12px 8px;border-radius:8px;
+    display:flex;flex-direction:column;align-items:stretch;gap:4px;
+    padding:12px 8px;border-radius:8px;
     background:none;border:0;border-bottom:1px solid var(--line-soft);
     cursor:pointer;font:inherit;text-align:left;
   }
   .next-row:last-child{border-bottom:0}
   .next-row:hover{background:rgba(167,139,250,.12)}
+  .n-main{display:flex;align-items:center;gap:11px}
+  /* why this row is worth taking, or why it is not */
+  .n-note{
+    font-size:9.5px;font-weight:700;letter-spacing:.11em;color:var(--dim);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .next-row.grouped .n-note{color:#4ade80}
+  .next-row.short .n-note{color:var(--amber)}
+  .next-row.soon .n-note{color:#f87171}
+  /* a group you can all join gets a marker down its left edge */
+  .next-row.grouped{
+    padding-left:11px;
+    box-shadow:inset 2px 0 0 rgba(74,222,128,.75);
+  }
   .next-row .n-ch{font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--text);flex:none;min-width:56px}
   .next-row .n-pct{font-size:12px;font-weight:800;padding:4px 8px;border-radius:6px;flex:none}
   /* status takes the slack so the slot count and the arrow line up down the list */
@@ -960,6 +975,7 @@
     background:var(--raise);border:1px solid var(--line);border-radius:7px;
   }
   .numin:focus{outline:none;border-color:rgba(34,211,238,.6)}
+  .chkin{width:15px;height:15px;accent-color:var(--cyan);cursor:pointer}
   .modal{
     position:fixed;inset:0;z-index:90;display:grid;place-items:center;
     background:rgba(2,6,11,.72);padding:20px;
@@ -1235,6 +1251,11 @@
             <span class="set-unit">to</span>
             <input class="numin" id="projEnd" type="number" min="0" max="23" step="1" value="8">
             <span class="set-unit">UTC — set both the same for none</span>
+          </div>
+          <div class="set-row proj-row">
+            <label for="projSettle">On arrival</label>
+            <input class="chkin" id="projSettle" type="checkbox" checked>
+            <span class="set-unit">write the projected % in as the real reading</span>
           </div>
           <div class="set-row">
             <button class="ghost" id="projSave">save for everyone</button>
@@ -1923,6 +1944,12 @@ const HELP_HTML = `
 
   <h5>GOOD TO KNOW</h5>
   <p>Everyone shares one board — changes show up for everybody straight away.</p>
+  <p>In <span class="k">PROJECTED BURNS</span>, a channel with people already on it and
+     room for your whole group is marked <span class="k">SUGGESTED</span> and put at the
+     top — two parties on one channel share the burning instead of splitting it between
+     two. If nobody has room for all of you, or you are already four, it just ranks by
+     burning. Rows that would only fit some of you say so, and full channels are labelled
+     full rather than suggested.</p>
   <p>Every change is logged in the chat below, so you can see who did what.</p>
   <p>Click your name at the bottom to change how you show up.</p>
 `;
@@ -1963,6 +1990,7 @@ const projLoss  = document.getElementById("projLoss");
 const projStart = document.getElementById("projStart");
 const projEnd   = document.getElementById("projEnd");
 const projSaved = document.getElementById("projSaved");
+const projSettle = document.getElementById("projSettle");
 
 function paintProj(){
   if(!projGain) return;
@@ -1973,6 +2001,7 @@ function paintProj(){
   set(projLoss,  proj.loss);
   set(projStart, proj.curfewStart);
   set(projEnd,   proj.curfewEnd);
+  if(projSettle && projSettle !== active) projSettle.checked = !!proj.settle;
 }
 
 function sendProj(next){
@@ -1986,12 +2015,13 @@ function sendProj(next){
 if(document.getElementById("projSave")){
   document.getElementById("projSave").onclick = () => sendProj({
     gain: projGain.value, loss: projLoss.value,
-    curfewStart: projStart.value, curfewEnd: projEnd.value
+    curfewStart: projStart.value, curfewEnd: projEnd.value,
+    settle: projSettle.checked
   });
 }
 if(document.getElementById("projReset")){
   document.getElementById("projReset").onclick = () =>
-    sendProj({ gain:10, loss:10, curfewStart:22, curfewEnd:8 });
+    sendProj({ gain:10, loss:10, curfewStart:22, curfewEnd:8, settle:true });
 }
 
 socket.on("proj", p => {
@@ -2000,7 +2030,8 @@ socket.on("proj", p => {
     gain:        Number(p.gain)        || 10,
     loss:        Number(p.loss)        || 0,
     curfewStart: Number(p.curfewStart) || 0,
-    curfewEnd:   Number(p.curfewEnd)   || 0
+    curfewEnd:   Number(p.curfewEnd)   || 0,
+    settle:      p.settle !== false
   };
   paintProj();
   closeMenu();      // any open projection list is now out of date
@@ -2428,7 +2459,7 @@ function flush(){ if(pending){ board = pending.channels; log = pending.log; pend
    ------------------------------------------------------------------ */
 /* The rules live on the server so everyone projects the same numbers. These
    are the fallbacks until the first "proj" message lands. */
-let proj = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8 };
+let proj = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8, settle: true };
 const CURFEW_START = () => proj.curfewStart;   // UTC hour the climb stops
 const CURFEW_END   = () => proj.curfewEnd;     // UTC hour it starts again
 const LEAVE_LOSS   = () => proj.loss;          // % knocked off as the last person walks
@@ -2547,20 +2578,29 @@ const blockOf = i => (typeof i === "number" && i >= 0) ? Math.floor(i / BLOCK_SI
 
 function rankChannels(skipIdx){
   const now = Date.now();
+  // how many of you are moving — a suggestion is only any use if all of you fit
+  const party = Math.max(1, (board[skipIdx] && board[skipIdx].entries.length) || 1);
   return board
     .map((c, idx) => {
       const oldest = c.entries.length
         ? Math.max(...c.entries.map(e => now - e.at))
         : 0;
       const proj = projectedPct(c);
+      const taken = c.entries.length;
+      const room = CAP - taken;
+      const full = taken >= CAP;
       return {
         idx,
         pct: proj === null ? c.pct : proj,
         shown: c.pct,
         proj,
-        taken: c.entries.length,
+        taken, room, party,
+        // an existing group with space for all of you: two parties on one
+        // channel beats two parties splitting the same burning between them
+        group: !full && taken > 0 && room >= party,
+        short: !full && taken > 0 && room < party,
         mins: Math.floor(oldest / 60000),
-        soon: c.entries.length >= CAP && oldest >= FREEING_MINUTES * 60000
+        soon: full && oldest >= FREEING_MINUTES * 60000
       };
     })
     .filter(c => c.idx !== skipIdx && (c.taken < CAP || c.soon))
@@ -2571,6 +2611,7 @@ function rankChannels(skipIdx){
       dist: Math.abs(c.idx - skipIdx)
     }))
     .sort((a, b) =>
+      (Number(b.group) - Number(a.group)) ||   // join up rather than split off
       (b.pct - a.pct) ||
       (a.sameBlock - b.sameBlock) ||
       (a.taken - b.taken) ||
@@ -2705,15 +2746,27 @@ function openNextMenu(anchor, fromIdx){
   } else {
     picks.forEach(c => {
       const row = document.createElement("button");
-      row.className = "next-row" + (c.soon ? " soon" : "");
+      row.className = "next-row"
+        + (c.soon ? " soon" : "")
+        + (c.group ? " grouped" : "")
+        + (c.short ? " short" : "");
       row.title = c.soon
         ? chLabel(c.idx) + " is full but " + c.mins + "m in — click to go look at it"
-        : "Move everyone on " + chLabel(fromIdx) + " to " + chLabel(c.idx);
+        : c.group
+          ? "Join the " + chLabel(c.idx) + " group — all " + c.party
+            + " of you fit, and you share the burning instead of splitting it"
+          : c.short
+            ? "Only " + c.room + " of your " + c.party + " would fit on " + chLabel(c.idx)
+            : "Move everyone on " + chLabel(fromIdx) + " to " + chLabel(c.idx);
+
+      // the row is a column now: the line of figures, then a note under it
+      const main = document.createElement("div");
+      main.className = "n-main";
 
       const nm = document.createElement("span");
       nm.className = "n-ch";
       nm.textContent = chLabel(c.idx);
-      row.appendChild(nm);
+      main.appendChild(nm);
 
       const pct = document.createElement("span");
       pct.className = "n-pct";
@@ -2721,7 +2774,7 @@ function openNextMenu(anchor, fromIdx){
       pct.textContent = c.pct + "%";
       pct.style.color = col; pct.style.background = col + "20"; pct.style.border = "1px solid " + col + "55";
       if(c.proj !== null) pct.title = "confirmed " + c.shown + "%, projected " + c.proj + "%";
-      row.appendChild(pct);
+      main.appendChild(pct);
 
       // when the next 10% is due, rather than a bare number
       const tick = document.createElement("span");
@@ -2745,24 +2798,37 @@ function openNextMenu(anchor, fromIdx){
         tick.title = "next " + HOURLY_GAIN() + "% around "
           + new Date(t.at).toISOString().slice(11,16) + " UTC";
       }
-      row.appendChild(tick);
+      main.appendChild(tick);
 
       if(c.soon){
         const tag = document.createElement("span");
         tag.className = "n-soon";
         tag.textContent = "4/4 · " + c.mins + "m";
-        row.appendChild(tag);
+        main.appendChild(tag);
       } else {
         const slots = document.createElement("span");
         slots.className = "n-slots";
         slots.textContent = c.taken === 0 ? "Empty" : c.taken + "/" + CAP;
-        row.appendChild(slots);
+        main.appendChild(slots);
       }
 
       const go = document.createElement("span");
       go.className = "n-go";
       go.innerHTML = chevron("right");
-      row.appendChild(go);
+      main.appendChild(go);
+      row.appendChild(main);
+
+      // say out loud why a row is worth taking, or why it isn't
+      let noteText = "";
+      if(c.soon)       noteText = "FULL — MAY FREE UP SOON";
+      else if(c.group) noteText = "SUGGESTED TO " + chLabel(c.idx) + " GROUP · ROOM FOR " + c.room;
+      else if(c.short) noteText = "ONLY ROOM FOR " + c.room + " OF YOUR " + c.party;
+      if(noteText){
+        const note = document.createElement("span");
+        note.className = "n-note";
+        note.textContent = noteText;
+        row.appendChild(note);
+      }
 
       row.onclick = () => {
         closeMenu();

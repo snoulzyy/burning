@@ -108,7 +108,9 @@ function hydrate(saved) {
     gain:        whole(state.proj.gain,        dp.gain,        1, 50),
     loss:        whole(state.proj.loss,        dp.loss,        0, 50),
     curfewStart: whole(state.proj.curfewStart, dp.curfewStart, 0, 23),
-    curfewEnd:   whole(state.proj.curfewEnd,   dp.curfewEnd,   0, 23)
+    curfewEnd:   whole(state.proj.curfewEnd,   dp.curfewEnd,   0, 23),
+    // write the projection in as the real reading when someone arrives
+    settle:      state.proj.settle !== false
   };
 
   state.chat.sort((a, b) => a.t - b.t);
@@ -226,6 +228,47 @@ function musicView() {
 function broadcastMusic() {
   io.emit("music", musicView());
 }
+/* ---------------- projected burning ----------------
+   The same sums the client draws in the Projected Burns list, done here so the
+   server can commit one as a real reading. An empty channel climbs `gain` an
+   hour from whichever is more recent — the last confirmed reading, or the
+   moment the last person left, which costs `loss` straight away. The clock
+   stops during the curfew window.
+   -------------------------------------------------------------------------- */
+
+// milliseconds between two times that actually count, curfew removed
+function projActiveMs(from, to) {
+  if (to <= from) return 0;
+  const { curfewStart, curfewEnd } = state.proj;
+  if (curfewStart === curfewEnd) return to - from;      // no freeze window set
+  let total = 0;
+  let cursor = new Date(from);
+  cursor.setUTCHours(0, 0, 0, 0);
+  for (let guard = 0; guard < 400 && cursor.getTime() < to; guard++) {
+    const dayStart = cursor.getTime();
+    const a = Math.max(from, dayStart + curfewEnd * 3600000);
+    const b = Math.min(to, dayStart + curfewStart * 3600000);
+    if (b > a) total += b - a;
+    cursor = new Date(dayStart + 86400000);
+  }
+  return total;
+}
+
+/* What the climb has reached, or null if there's nothing to measure from.
+   Deliberately does NOT check whether anyone is on the channel: the caller that
+   settles a reading runs just after people have arrived, and still needs the
+   number the channel had climbed to while it was empty. */
+function projectedFor(c) {
+  if (!c) return null;
+  const left = c.emptiedAt || 0, set = c.pctAt || 0;
+  const anchor = Math.max(left, set);
+  if (!anchor) return null;
+  const start = (left >= set) ? c.pct - state.proj.loss : c.pct;
+  // it steps up on the hour, it doesn't creep — 80% holds at 80% until the tick
+  const hours = Math.floor(projActiveMs(anchor, Date.now()) / 3600000);
+  return Math.max(0, Math.min(100, start + state.proj.gain * hours));
+}
+
 // music happens everywhere at once, so this log is global — every board's
 // activity pane shows the same lines, whichever board they were sent from
 function broadcastMusicLog() {
@@ -640,14 +683,16 @@ io.on("connection", socket => {
           gain:        num(a.gain,        p.gain,        1, 50),
           loss:        num(a.loss,        p.loss,        0, 50),
           curfewStart: num(a.curfewStart, p.curfewStart, 0, 23),
-          curfewEnd:   num(a.curfewEnd,   p.curfewEnd,   0, 23)
+          curfewEnd:   num(a.curfewEnd,   p.curfewEnd,   0, 23),
+          settle:      a.settle === undefined ? p.settle : !!a.settle
         };
         if (JSON.stringify(next) === JSON.stringify(p)) return;
         state.proj = next;
         note(region, `projection rules changed by ${by}`
           + ` — +${next.gain}%/h, −${next.loss}% on leaving, curfew `
           + String(next.curfewStart).padStart(2, "0") + ":00–"
-          + String(next.curfewEnd).padStart(2, "0") + ":00 UTC");
+          + String(next.curfewEnd).padStart(2, "0") + ":00 UTC, "
+          + (next.settle ? "confirm on arrival" : "no confirm on arrival"));
         persist();
         io.emit("proj", state.proj);
         broadcast(region);
@@ -735,6 +780,21 @@ io.on("connection", socket => {
       default:
         return;
     }
+    // A channel left sitting empty has been climbing. The moment someone walks
+    // onto it that projection is the best reading anyone has, so it becomes the
+    // confirmed one — otherwise the card keeps showing a two-hour-old 80% for a
+    // channel that is really at 100%, and whoever moved has to fix it by hand.
+    if (state.proj.settle) {
+      board.forEach((c, i) => {
+        if (before[i] !== 0 || !c.entries.length) return;   // only empty → occupied
+        const p = projectedFor(c);
+        if (p === null || p === c.pct) return;
+        note(region, `${ch(i)} burning ${c.pct}% → ${p}% — projection confirmed on arrival`);
+        c.pct = p;
+        c.pctAt = Date.now();
+      });
+    }
+
     // a channel only decays once it has been farmed and then abandoned
     board.forEach((c, i) => {
       const now = c.entries.length;
