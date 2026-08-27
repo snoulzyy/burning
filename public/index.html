@@ -624,8 +624,11 @@
 
   .now{position:relative;min-height:300px;padding:14px 14px;border-bottom:1px solid var(--line-soft);overflow:hidden}
   .now > *{position:relative;z-index:1}
+  /* the artwork backs the whole drawer, head to queue — it sits behind every
+     panel rather than fighting the player for the now-playing box */
   .drawer-art{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
   .drawer-art[hidden]{display:none}
+  .drawer > *:not(.drawer-art){position:relative;z-index:1}
   .art-media{
     position:absolute;inset:0;width:100%;height:100%;display:none;
     object-fit:cover;background-size:cover;background-position:center;
@@ -644,7 +647,7 @@
   }
   .drawer-art::after{
     content:"";position:absolute;inset:0;
-    background:linear-gradient(180deg,rgba(10,17,25,.55),rgba(10,17,25,.8));
+    background:linear-gradient(180deg,rgba(10,17,25,.52),rgba(10,17,25,.72) 45%,rgba(10,17,25,.86));
   }
   .now-label{font-size:9px;letter-spacing:.18em;color:var(--dim);margin-bottom:5px}
   .now-title{
@@ -654,12 +657,6 @@
   .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
-  /* out of sight but still rendering, so the audio carries on */
-  .yt-holder.tucked{
-    position:absolute;left:-9999px;top:auto;width:2px;height:2px;
-    margin:0;opacity:.01;pointer-events:none;overflow:hidden;
-  }
-  .yt-holder.tucked iframe{width:2px;height:2px}
   .yt-holder iframe{display:block;width:100%;height:215px;border:0}
   /* let it read through the queue too, so the little box shows it as well */
   /* video wallpaper: a second, muted player sitting behind the whole page */
@@ -1254,6 +1251,11 @@
   </div>
 
   <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-art" id="drawerArt" hidden>
+      <video id="artVideo" class="art-media" autoplay muted loop playsinline></video>
+      <div id="artStill" class="art-media art-still"></div>
+    </div>
+
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
       <span class="listeners" id="listenCount" title="People with the music on right now">0 listening</span>
@@ -1263,10 +1265,6 @@
     </div>
 
     <div class="now" id="nowBox">
-      <div class="drawer-art" id="drawerArt" hidden>
-        <video id="artVideo" class="art-media" autoplay muted loop playsinline></video>
-        <div id="artStill" class="art-media art-still"></div>
-      </div>
       <canvas class="viz" id="viz" hidden aria-hidden="true"></canvas>
       <div class="now-label">NOW PLAYING</div>
       <div class="now-title" id="nowTitle">nothing yet</div>
@@ -1276,7 +1274,7 @@
         <button class="ghost wall-btn" id="wallBtn" title="Use the playing video as the page background">video wallpaper: off</button>
       </div>
       <div class="bgvid-row" id="bgvidRow" hidden>
-        <button class="ghost bgvid-btn" id="bgvidBtn" title="Show the artwork loop behind the queue">art: on</button>
+        <button class="ghost bgvid-btn" id="bgvidBtn" title="Show the artwork loop behind the whole drawer">art: on</button>
       </div>
       <div class="bgvid-row" id="vizRow">
         <button class="ghost viz-btn" id="vizBtn" title="React to the actual sound (needs tab audio)">beat bars: off</button>
@@ -3245,17 +3243,31 @@ function card(c,i){
     const inp = document.createElement("input");
     inp.placeholder = "name, then Enter";
     inp.maxLength = 24;
-    inp.onblur = () => {
+    // a render can happen under you at any moment — someone claims a name, the
+    // rules change — and it rebuilds this box. keep what you've typed on the
+    // editing state so the new box comes back with it, caret and all.
+    inp.value = editing.draft || "";
+    inp.oninput = () => { editing.draft = inp.value; };
+    // Enter commits on its own rather than going through blur(): if a repaint
+    // has just swapped the box out from under you it is no longer the focused
+    // element, and blur() on an unfocused input does nothing at all.
+    let done = false;
+    const commit = () => {
+      if(done) return;
+      done = true;
       const v = inp.value.trim();
       editing = null;
-      if(v) send({type:"add",ch:i,name:v}); else { flush(); render() }
+      flush();
+      if(v) send({type:"add",ch:i,name:v});
+      render();
     };
+    inp.onblur = () => { if(inp.isConnected) commit(); };   // swapped out ≠ dismissed
     inp.onkeydown = e => {
-      if(e.key==="Enter") inp.blur();
-      if(e.key==="Escape"){ editing=null; flush(); render() }
+      if(e.key==="Enter"){ e.preventDefault(); commit(); }
+      if(e.key==="Escape"){ done = true; editing=null; flush(); render() }
     };
     box.appendChild(inp); el.appendChild(box);
-    setTimeout(()=>inp.focus(),0);
+    setTimeout(()=>{ inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); },0);
   }
 
   if(pickedPerson || (picked && picked.ch !== i)) el.classList.add("target");
@@ -3309,19 +3321,32 @@ function row(en,ci){
 
   if(editing && editing.ch===ci && editing.id===en.id){
     const inp = document.createElement("input");
-    inp.value = en.name; inp.maxLength = 24;
-    inp.onblur = () => {
+    inp.maxLength = 24;
+    const fresh = editing.draft === undefined;
+    inp.value = fresh ? en.name : editing.draft;
+    inp.oninput = () => { editing.draft = inp.value; };
+    let done = false;
+    const commit = () => {
+      if(done) return;
+      done = true;
       const v = inp.value.trim();
       editing = null;
+      flush();
       if(v && v !== en.name) send({type:"rename",ch:ci,id:en.id,name:v});
-      else { flush(); render() }
+      render();
     };
+    inp.onblur = () => { if(inp.isConnected) commit(); };   // swapped out ≠ dismissed
     inp.onkeydown = e => {
-      if(e.key==="Enter") inp.blur();
-      if(e.key==="Escape"){ editing=null; flush(); render() }
+      if(e.key==="Enter"){ e.preventDefault(); commit(); }
+      if(e.key==="Escape"){ done = true; editing=null; flush(); render() }
     };
     r.appendChild(inp);
-    setTimeout(()=>{inp.focus();inp.select()},0);
+    // select the whole name the first time, but don't re-select on every repaint
+    setTimeout(()=>{
+      inp.focus();
+      if(fresh) inp.select();
+      else { const n = inp.value.length; inp.setSelectionRange(n, n); }
+    },0);
   } else {
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
@@ -3996,14 +4021,11 @@ function paintWall(){
   wallBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
   wallBtn.classList.toggle("on", vidWall);
   document.getElementById("wallRow").hidden = !listening;
-  // never display:none the player — that stops playback dead. when the artwork
-  // has the box, the player shrinks out of sight and keeps going.
+  // never display:none the player — that stops playback dead. it also stays put
+  // when the artwork is on: the art is behind the whole drawer now, so the two
+  // aren't after the same box and nothing has to move out of the way.
   const holder = document.getElementById("ytHolder");
-  if(holder){
-    holder.hidden = !listening;
-    const artHasBox = artFound && artOn;
-    holder.classList.toggle("tucked", listening && artHasBox);
-  }
+  if(holder) holder.hidden = !listening;
   syncBgPlayer();
 }
 wallBtn.onclick = () => {
@@ -4022,14 +4044,12 @@ const bgvidBtn = document.getElementById("bgvidBtn");
 function paintArt(){
   const row = document.getElementById("bgvidRow");
   const art = document.getElementById("drawerArt");
-  // the artwork keeps the box for good — it never stops for the player
   if(row) row.hidden = !artFound;
   if(art) art.hidden = !(artFound && artOn);
   bgvidBtn.textContent = artOn ? "art: on" : "art: off";
   bgvidBtn.classList.toggle("on", artOn);
   const v = document.getElementById("artVideo");
   if(v){ (artFound && artOn) ? v.play().catch(() => {}) : v.pause(); }
-  if(typeof paintWall === "function") paintWall();   // the player may need to tuck or come back
 }
 bgvidBtn.onclick = () => {
   artOn = !artOn;
