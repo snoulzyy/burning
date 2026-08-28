@@ -242,7 +242,12 @@
   .lockic.me{color:var(--cyan)}
   .chip.placed{opacity:.62;cursor:default}
   .chip.mine{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
-  .chip.mine.tinted{box-shadow:0 0 0 1px rgba(255,255,255,.35), 0 0 14px -2px var(--glow)}
+  .chip.mine.tinted{
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.45),
+      0 0 18px -2px var(--glow),
+      0 0 44px -12px var(--glow);
+  }
   .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
   .chip-btn{
     width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
@@ -841,12 +846,18 @@
     position:relative;overflow:hidden;border:0;
     background-color:#0c141d;
     background-image:linear-gradient(112deg,var(--a1) 0%,var(--a2) 45%,var(--a3) 100%);
-    box-shadow:0 0 14px -5px var(--glow);
+    /* a tight ring in their colour, then a close halo and a wider bloom.
+       an element's own box-shadow is not clipped by its overflow, so the
+       drifting sheen below stays boxed in while the bloom spreads out. */
+    box-shadow:
+      0 0 0 1px var(--ring, transparent),
+      0 0 16px -3px var(--glow),
+      0 0 40px -12px var(--glow);
     contain:paint;
   }
   /* a hairline edge that flows through their three shades */
   .row.tinted::before,.chip.tinted::before{
-    content:"";position:absolute;inset:0;border-radius:inherit;padding:1.3px;z-index:0;
+    content:"";position:absolute;inset:0;border-radius:inherit;padding:1.6px;z-index:0;
     background:linear-gradient(112deg,var(--e1),var(--e2) 38%,var(--e3) 68%,var(--e1));
     background-size:260% 100%;
     animation:auraEdge 7s linear infinite;
@@ -857,6 +868,10 @@
     mask-composite:exclude;
     pointer-events:none;
   }
+  /* the same edge again, blurred, sitting behind it — this is what makes the
+     border itself glow rather than just sitting there as a bright line */
+  .row.tinted::before{filter:drop-shadow(0 0 4px var(--ring, transparent))}
+  .chip.tinted::before{filter:drop-shadow(0 0 5px var(--ring, transparent))}
   @keyframes auraEdge{
     from{background-position:0 50%}
     to  {background-position:260% 50%}
@@ -865,7 +880,7 @@
   .row.tinted::after,.chip.tinted::after{
     content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
     background:linear-gradient(104deg,transparent 40%,var(--glow) 50%,transparent 60%);
-    opacity:.20;
+    opacity:.32;
     transform:translate3d(-130%,0,0);
     animation:auraSheen 6.5s ease-in-out infinite;
     will-change:transform;
@@ -876,7 +891,10 @@
     100%{transform:translate3d(130%,0,0)}
   }
   .row.tinted > *,.chip.tinted > *{position:relative;z-index:1}
-  .row.tinted:hover,.chip.tinted:hover{filter:brightness(1.18)}
+  .row.tinted:hover,.chip.tinted:hover{filter:brightness(1.25)}
+  /* the name catches the light too. works on gradient names as well: the
+     shadow is cast from the glyph shapes, not from the fill colour. */
+  .row.tinted .who,.chip.tinted .nm{text-shadow:0 0 10px var(--glow),0 0 22px var(--glow)}
   .row.tinted .who{font-weight:700}
   .row.tinted .icon:hover{background:rgba(255,255,255,.10)}
   @media(prefers-reduced-motion:reduce){
@@ -3116,6 +3134,57 @@ function openColorMenu(anchor, person){
   });
   m.appendChild(g2);
 
+  /* A wheel and a hex box for each half of the pair, so either can be typed
+     exactly. Both rows behave the same; only what they send differs. */
+  const okHex = v => /^#?[0-9a-fA-F]{6}$/.test(v);
+  const norm  = v => (v[0] === "#" ? v : "#" + v).toLowerCase();
+
+  function customRow(current, fallback, label, apply){
+    const box = document.createElement("div");
+    box.className = "colcustom";
+
+    const wheel = document.createElement("input");
+    wheel.type = "color";
+    wheel.className = "colwheel";
+    wheel.value = current || fallback;
+    wheel.title = label;
+
+    const hex = document.createElement("input");
+    hex.type = "text";
+    hex.className = "hexbox";
+    hex.value = current || "";
+    hex.placeholder = "#rrggbb";
+    hex.maxLength = 7;
+    hex.spellcheck = false;
+    hex.title = label;
+    hex.setAttribute("aria-label", label);
+
+    wheel.oninput = () => { hex.value = wheel.value; };      // preview as you drag
+    wheel.onchange = () => apply(wheel.value);               // apply closes the menu
+    hex.onkeydown = e => {
+      if(e.key === "Enter"){
+        const v = hex.value.trim();
+        if(okHex(v)) apply(norm(v));
+      }
+      if(e.key === "Escape") closeMenu();
+    };
+    box.append(wheel, hex);
+    return box;
+  }
+
+  // the base colour goes under its own palette
+  m.insertBefore(
+    customRow(person.color, "#22d3ee", "Base colour",
+              v => okHex(v) && push(norm(v), person.color2)),
+    h2);
+
+  // and the blend under its own. with no base yet, this becomes the base.
+  m.appendChild(customRow(person.color2, person.color || "#f472b6", "Blend colour",
+    v => {
+      if(!okHex(v)) return;
+      person.color ? push(person.color, norm(v)) : push(norm(v), null);
+    }));
+
   if(person.color){
     const prev = document.createElement("div");
     prev.className = "col-preview";
@@ -3123,40 +3192,6 @@ function openColorMenu(anchor, person){
     inkText(prev, person.color, person.color2);
     m.appendChild(prev);
   }
-
-  // anything else you like — full wheel plus a hex box
-  const custom = document.createElement("div");
-  custom.className = "colcustom";
-
-  const wheel = document.createElement("input");
-  wheel.type = "color";
-  wheel.value = person.color || "#22d3ee";
-  wheel.title = "Pick any colour";
-
-  const hex = document.createElement("input");
-  hex.type = "text";
-  hex.className = "hexbox";
-  hex.value = person.color || "";
-  hex.placeholder = "#rrggbb";
-  hex.maxLength = 7;
-  hex.spellcheck = false;
-
-  const apply = col => {
-    if(!/^#[0-9a-fA-F]{6}$/.test(col)) return;
-    push(col.toLowerCase(), person.color2);
-  };
-  wheel.oninput = () => { hex.value = wheel.value; };
-  wheel.onchange = () => apply(wheel.value);        // apply closes the menu
-  hex.onkeydown = e => {
-    if(e.key === "Enter"){
-      const v = hex.value.trim();
-      if(/^#?[0-9a-fA-F]{6}$/.test(v)) apply(v[0] === "#" ? v : "#" + v);
-    }
-    if(e.key === "Escape") closeMenu();
-  };
-
-  custom.append(wheel, hex);
-  m.appendChild(custom);
 
   document.body.appendChild(m);
 
@@ -3226,7 +3261,8 @@ function renderBench(){
       chip.style.setProperty("--e1", rgba(pa, .85));
       chip.style.setProperty("--e2", rgba(glowInk(pb), .95));
       chip.style.setProperty("--e3", rgba(pc, .85));
-      chip.style.setProperty("--glow", rgba(plit2 || plit, .42));
+      chip.style.setProperty("--glow", rgba(plit2 || plit, .66));
+      chip.style.setProperty("--ring", rgba(glowInk(pb), .58));
       inkText(nm, p.color, p.color2);
       nm.style.fontWeight = "700";
     }
@@ -3582,7 +3618,9 @@ function row(en,ci){
     r.style.setProperty("--e1", rgba(a, .9));
     r.style.setProperty("--e2", rgba(glowInk(b), .95));
     r.style.setProperty("--e3", rgba(c2, .9));
-    r.style.setProperty("--glow", rgba(lit, .5));
+    r.style.setProperty("--glow", rgba(lit, .72));
+    // the ring takes the middle of the pair, so a blend glows in between
+    r.style.setProperty("--ring", rgba(glowInk(b), .62));
     r.style.setProperty("--ink",  lit);
   }
 
