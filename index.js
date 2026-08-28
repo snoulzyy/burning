@@ -139,6 +139,17 @@ const persist = () => storage.save(state);
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ch = i => "CH" + String(i + 1).padStart(2, "0");
+
+/* Somebody landing on a channel that is already going joins its clock rather
+   than starting their own. The channel has been up thirty-five minutes, so a
+   latecomer is thirty-five minutes in as well — the forty minute mark belongs
+   to the channel, not to whoever happened to walk in last. The oldest entry is
+   the one to match, since that is the channel's real age. */
+function joinClock(chan) {
+  if (!chan || !chan.entries.length) return Date.now();
+  const ats = chan.entries.map(e => e.at).filter(v => typeof v === "number");
+  return ats.length ? Math.min.apply(null, ats) : Date.now();
+}
 const clean = (s, n) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n);
 // "Guest" is the placeholder a new browser starts on. The client will not let
 // you act under it, and this is the other half of that: a tab left open from
@@ -189,10 +200,27 @@ let online = 0;      // everyone connected, whichever region they're looking at
 // just count them. a Map keyed on socket id keeps a refresh or a second tab
 // from leaving a ghost behind — the entry goes when that socket does.
 const listeners = new Map();   // socket.id -> display name
+
+/* Drop anyone whose socket has gone.
+   Normally the disconnect handler clears them, but a browser that dies without
+   closing cleanly — a laptop lid, a dropped connection, a tab killed by the OS
+   — leaves the old socket behind until the server notices. Meanwhile the same
+   person reconnects on a fresh socket id and appears twice. Checking against
+   the live socket list on the way out costs nothing and cannot go stale. */
+function pruneListeners() {
+  let gone = false;
+  for (const id of [...listeners.keys()]) {
+    if (!io.sockets.sockets.has(id)) { listeners.delete(id); gone = true; }
+  }
+  return gone;
+}
+
 function listenersView() {
-  const names = [...listeners.values()].filter(Boolean);
-  names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  return { n: listeners.size, who: names };
+  pruneListeners();
+  const list = [...listeners.entries()]
+    .map(([id, name]) => ({ id, name: name || "someone" }))
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  return { n: list.length, who: list.map(x => x.name), list };
 }
 function broadcastListeners() { io.emit("listeners", listenersView()); }
 
@@ -547,7 +575,7 @@ io.on("connection", socket => {
           if (i !== -1) { c.entries.splice(i, 1); cameFrom = idx; }
         });
 
-        target.entries.push({ id: uid(), name, at: Date.now() });
+        target.entries.push({ id: uid(), name, at: joinClock(target) });
         note(region, cameFrom === null
           ? `${name} added to ${ch(at)} by ${by}`
           : `${name} moved ${ch(cameFrom)} → ${ch(at)} by ${by}`);
@@ -584,7 +612,7 @@ io.on("connection", socket => {
         const i = from.entries.findIndex(e => e.id === a.id);
         if (i === -1) return;
         const [moved] = from.entries.splice(i, 1);
-        moved.at = Date.now();
+        moved.at = joinClock(to);        // joins the clock already running there
         to.entries.push(moved);
         note(region, `${moved.name} moved ${ch(Number(a.from))} → ${ch(Number(a.to))} by ${by}`);
         break;
@@ -606,7 +634,10 @@ io.on("connection", socket => {
 
         // otherwise merge in as many as will fit
         const moving = from.entries.splice(0, Math.min(room, from.entries.length));
-        moving.forEach(e => { e.at = now; });
+        // merging into a channel that is already going? take its clock. an
+        // empty one is a fresh start, so that keeps the reset.
+        const stamp = to.entries.length ? joinClock(to) : now;
+        moving.forEach(e => { e.at = stamp; });
         to.entries = to.entries.concat(moving);
         const left = from.entries.length;
         note(region, `${moving.map(e => e.name).join(", ")} moved ${A} → ${B} by ${by}`
@@ -915,7 +946,7 @@ io.on("connection", socket => {
         if (already) { already.at = Date.now(); note(region, `${p.name} timer reset in ${ch(at)} by ${by}`); break; }
         if (target.entries.length >= CAP) return;
         const from = liftPerson(p.id, area);
-        target.entries.push({ id: uid(), pid: p.id, name: p.name, at: Date.now() });
+        target.entries.push({ id: uid(), pid: p.id, name: p.name, at: joinClock(target) });
         if (from && from.region === region) {
           note(region, `${p.name} moved ${ch(from.idx)} → ${ch(at)} by ${by}`);
         } else if (from) {
@@ -1034,10 +1065,26 @@ io.on("connection", socket => {
     // older clients sent a bare boolean; newer ones send the name along with it
     const on = (v && typeof v === "object") ? !!v.on : !!v;
     const who = clean((v && typeof v === "object") ? v.who : "", 24) || "Guest";
-    if (on === isListening && listeners.get(socket.id) === who) return;
+    const same = on === isListening && listeners.get(socket.id) === who;
     isListening = on;
     if (on) listeners.set(socket.id, who);
     else listeners.delete(socket.id);
+    // still sweep even when nothing changed here — this is the message that
+    // arrives when somebody reconnects, which is exactly when a ghost appears
+    if (!same || pruneListeners()) broadcastListeners();
+  });
+
+  // turn somebody else's music off — for the ones who wander away with it on
+  socket.on("music-kick", id => {
+    const target = clean(id, 40);
+    if (!listeners.has(target)) return;
+    const who = listeners.get(target) || "someone";
+    const by = watchers.get(socket.id) || "someone";
+    if (nameless(by)) return;
+    listeners.delete(target);
+    const sock = io.sockets.sockets.get(target);
+    if (sock) sock.emit("unlisten", { by });     // their player stops itself
+    musicNote(`${by} turned the music off for ${who}`);
     broadcastListeners();
   });
 
