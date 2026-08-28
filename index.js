@@ -140,6 +140,13 @@ const persist = () => storage.save(state);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ch = i => "CH" + String(i + 1).padStart(2, "0");
 const clean = (s, n) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n);
+// "Guest" is the placeholder a new browser starts on. The client will not let
+// you act under it, and this is the other half of that: a tab left open from
+// before, or anything talking to the socket directly, gets the same answer.
+const nameless = n => {
+  const t = String(n || "").trim().toLowerCase();
+  return !t || t === "guest" || t === "someone";
+};
 
 function note(region, msg, who) {
   const log = state[region].log;
@@ -481,6 +488,7 @@ io.on("connection", socket => {
     const board = state[region].channels;
     const before = board.map(c => c.entries.length);
     const by = clean(a.by, 24) || "someone";
+    if (nameless(by)) return;          // say who you are first
     const at = Number(a.ch);
     const target = board[at];
 
@@ -1008,6 +1016,7 @@ io.on("connection", socket => {
     if (now - lastMvp < 5000) return;              // no spamming the button
     lastMvp = now;
     const by = clean(m && m.by, 24) || "someone";
+    if (nameless(by)) return;
     note(viewing, `MVP called by ${by}`);
     persist();
     broadcast(viewing);
@@ -1017,6 +1026,7 @@ io.on("connection", socket => {
   socket.on("chat", m => {
     if (!m || !viewing) return;
     const who = clean(m.who, 24) || "Guest";
+    if (nameless(who)) return;         // say who you are first
     const text = clean(m.text, 200);
     if (!text) return;
     state.chat.push({ t: Date.now(), who, msg: text });

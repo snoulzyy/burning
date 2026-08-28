@@ -1134,6 +1134,17 @@
   }
   .numin:focus{outline:none;border-color:rgba(34,211,238,.6)}
   .chkin{width:15px;height:15px;accent-color:var(--cyan);cursor:pointer}
+  /* the name is set in the Players box, so this only reports it */
+  .who-btn{cursor:default}
+  .who-btn.nameless{color:var(--amber);border-color:rgba(245,158,11,.5)}
+  /* until they have one, point at where it comes from */
+  html.nameless .bench{border-color:rgba(245,158,11,.55)}
+  .bench.nudge{animation:benchNudge .5s ease-in-out 3}
+  @keyframes benchNudge{
+    0%,100%{box-shadow:0 10px 26px rgba(0,0,0,.45)}
+    50%    {box-shadow:0 10px 26px rgba(0,0,0,.45), 0 0 0 3px rgba(245,158,11,.55)}
+  }
+  @media(prefers-reduced-motion:reduce){ .bench.nudge{animation:none} }
   /* a reading the board has aged for you, not one somebody confirmed */
   .pct.fell{font-style:italic}
 
@@ -1385,7 +1396,7 @@
     </div>
     <div class="say">
       <span class="dot"></span>
-      <button class="who-btn" id="whoBtn" title="Change your display name">Guest</button>
+      <span class="who-btn" id="whoBtn" title="Add yourself in the Players box to pick a name">no name yet</span>
       <span class="sep" style="color:#3a4c5e">·</span>
       <input id="sayInput" placeholder="Message… or 12 weenie / 12 70%" maxlength="200" aria-label="Send a message">
       <button class="emote-btn" id="emoteBtn" title="Emotes" aria-label="Emotes" hidden>☺</button>
@@ -1953,7 +1964,31 @@ function stamp(ts){
   const d = new Date(ts);
   return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0");
 }
-const send = a => socket.emit("action", Object.assign({by:me, region}, a));
+// "Guest" is the placeholder everyone starts as; it is nobody
+function isGuest(n){
+  const t = String(n || "").trim().toLowerCase();
+  return !t || t === "guest";
+}
+function hasName(){ return !isGuest(me); }
+
+/* Everything that changes the board goes through here, so this is the one
+   place that has to check you have said who you are. Without it a stranger can
+   move other people's groups around and nobody can tell who did it. */
+function needName(why){
+  if(hasName()) return true;
+  toast(why || "Add yourself in the Players box first — that name is who you are here.", true);
+  const bench = document.querySelector(".bench");
+  if(bench){
+    bench.classList.add("nudge");
+    setTimeout(() => bench.classList.remove("nudge"), 1600);
+  }
+  return false;
+}
+
+const send = a => {
+  if(!needName()) return;
+  socket.emit("action", Object.assign({by:me, region}, a));
+};
 
 /* =========================================================================
    7TV EMOTES
@@ -2480,21 +2515,34 @@ function alarm(){
   [0, 1.1, 2.2].forEach(off => beep(now + off));
 }
 
-let titleTimer = null, baseTitle = null;
+/* The tab title flashes to catch your eye, then gives up. It used to keep
+   going until the notification itself was clicked — so dismissing the popup
+   any other way, or already having the tab open, left it blinking forever. */
+const FLASH_FOR = 40000;                 // long enough to notice, not to annoy
+let titleTimer = null, flashStop = null, baseTitle = null;
 function flashTitle(msg){
   if(baseTitle === null) baseTitle = document.title;
-  
   clearInterval(titleTimer);
+  clearTimeout(flashStop);
   let on = false;
   titleTimer = setInterval(() => {
     document.title = (on = !on) ? "🔔 " + msg : baseTitle;
   }, 900);
+  flashStop = setTimeout(stopFlash, FLASH_FOR);
 }
 function stopFlash(){
   clearInterval(titleTimer);
+  clearTimeout(flashStop);
+  titleTimer = null;
   if(baseTitle !== null) document.title = baseTitle;
 }
 window.addEventListener("focus", stopFlash);
+// any sign of life counts as "yes, I saw it"
+["pointerdown", "keydown"].forEach(ev =>
+  window.addEventListener(ev, stopFlash, { passive: true }));
+document.addEventListener("visibilitychange", () => {
+  if(!document.hidden) stopFlash();
+});
 
 let toastTimer = null;
 function toast(msg, warn){
@@ -2752,7 +2800,9 @@ socket.on("mvp", m => {
   showMvpPopup(line, by);
   try {
     if(window.Notification && Notification.permission === "granted"){
-      const n = new Notification(line, { body: by, requireInteraction: true });
+      // tagged so a repeat replaces the old one instead of stacking up, and
+      // left to dismiss itself — requiring a click meant it sat there nagging
+      const n = new Notification(line, { body: by, tag: "mvp", renotify: false });
       n.onclick = () => { window.focus(); stopFlash(); n.close(); };
     }
   } catch(e){}
@@ -3703,10 +3753,12 @@ document.getElementById("benchAdd").onclick = () => {
   const v = prompt("Name to add");
   const name = (v || "").trim().slice(0,24);
   if(!name) return;
-  if(name.toLowerCase() === "guest"){
-    toast("“Guest” can't go in the people box — it's fine to just stay a guest", true);
+  if(isGuest(name)){
+    toast("“Guest” isn't a name — pick something people will recognise", true);
     return;
   }
+  // this is where your name comes from: whatever you last added is who you are
+  setMe(name);
   send({ type:"person-add", name, token: myToken });
   // it's yours from the moment you add it, so remember it locally too
   myClaimNames.add(name.toLowerCase());
@@ -4249,25 +4301,42 @@ sayInput.addEventListener("keydown", e => {
     return;
   }
 
+  if(!needName("Add yourself in Players before chatting.")) return;
   socket.emit("chat", {who:me, text:v, region});
   sayInput.value = "";
 });
 
+/* Your name is whatever you put in the Players box — it is the same name the
+   board shows, so there is only one to keep track of. The label at the bottom
+   just reports it; it is not a second place to set it. */
 const whoBtn = document.getElementById("whoBtn");
-whoBtn.textContent = me;
-whoBtn.onclick = () => {
-  const v = prompt("Display name", me);
-  if(!v || !v.trim()) return;
+
+function setMe(v){
+  const next = String(v || "").trim().slice(0, 24);
+  if(!next || isGuest(next)) return false;
   const old = me;
-  me = v.trim().slice(0,24);
-  whoBtn.textContent = me;
+  me = next;
   try { localStorage.setItem("ct:name", me) } catch(e){}
   try {
     if(window.Notification && Notification.permission === "default") Notification.requestPermission();
   } catch(e){}
   renameMyChips(old);
   tellListening();          // the listening list shows names, so refresh it
-};
+  paintWho();
+  return true;
+}
+
+function paintWho(){
+  if(!whoBtn) return;
+  const named = hasName();
+  whoBtn.textContent = named ? me : "no name yet";
+  whoBtn.classList.toggle("nameless", !named);
+  whoBtn.title = named
+    ? "You are " + me + " — add another name in Players to change it"
+    : "Add yourself in the Players box to pick a name";
+  document.documentElement.classList.toggle("nameless", !named);
+}
+paintWho();
 
 // you claimed a chip, then changed your display name — keep the two in step
 function renameMyChips(oldName){
@@ -4359,6 +4428,7 @@ mvpTimerReset.onclick = () => {
 paintMvpTimer();
 
 mvpBtn.onclick = () => {
+  if(!needName("Add yourself in Players before calling MVP — everyone gets alarmed, so they should know who did it.")) return;
   primeAudio();
   socket.emit("mvp", { by: me });
   mvpBtn.classList.add("fired");
@@ -4469,7 +4539,8 @@ function checkChannelTimers(){
       try {
         if(window.Notification && Notification.permission === "granted"){
           const n = new Notification(r + " — " + CHANNEL_ALERT_MINUTES + " minutes", {
-            body: msg, requireInteraction: true
+            // one per channel: if it somehow fires again it replaces itself
+            body: msg, tag: "ch:" + key, renotify: false
           });
           n.onclick = () => { window.focus(); stopFlash(); n.close(); };
         }
