@@ -441,8 +441,12 @@ function liftPerson(pid, area) {
   });
   return from;
 }
+// who is on the site at all, by socket, so the counter can name them
+const watchers = new Map();          // socket.id -> display name
 function presence() {
-  io.emit("presence", { n: online });
+  const who = [...watchers.values()].filter(Boolean);
+  who.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  io.emit("presence", { n: online, who });
 }
 
 io.on("connection", socket => {
@@ -456,6 +460,7 @@ io.on("connection", socket => {
     // subscribe to all of them, so switching tabs needs no round trip
     live.forEach(x => socket.join(x));
     if (!viewing) online++;          // count the person once, not once per tab switch
+    if (!watchers.has(socket.id)) watchers.set(socket.id, "");
     viewing = id;
 
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS, build: BUILD });
@@ -997,6 +1002,15 @@ io.on("connection", socket => {
 
   // "MVP is up" — one shout that reaches anyone currently on a channel, any board
   let lastMvp = 0;
+  // the name this browser goes by, for the watching list
+  socket.on("whoami", n => {
+    const who = clean(n, 24);
+    const next = nameless(who) ? "" : who;
+    if (watchers.get(socket.id) === next) return;
+    watchers.set(socket.id, next);
+    presence();
+  });
+
   // whether this browser currently has the queue playing
   let isListening = false;
   socket.on("listening", v => {
@@ -1041,7 +1055,8 @@ io.on("connection", socket => {
       listeners.delete(socket.id);
       broadcastListeners();
     }
-    if (!viewing) return;
+    const wasWatching = watchers.delete(socket.id);
+    if (!viewing) { if (wasWatching) presence(); return; }
     online = Math.max(0, online - 1);
     presence();
   });

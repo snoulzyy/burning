@@ -101,7 +101,17 @@
   h1{margin:0;font-size:29px;font-weight:800;letter-spacing:.02em;line-height:1}
   .status{margin-top:7px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--green);flex-wrap:wrap}
   .status .sep{color:#2c3d4e}
-  .status .who-online{color:var(--dim)}
+  .status .who-online{
+    font:inherit;color:var(--dim);background:none;border:0;padding:0;cursor:pointer;
+  }
+  .status .who-online:hover{color:var(--text)}
+  .seenbox{
+    position:absolute;left:0;top:26px;z-index:80;min-width:160px;max-width:220px;
+    padding:7px;border-radius:10px;
+    background:#0b131c;border:1px solid rgba(34,211,238,.35);
+    box-shadow:0 16px 36px rgba(0,0,0,.7);
+    max-height:260px;overflow-y:auto;scrollbar-width:thin;
+  }
   .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 9px var(--green);animation:pulse 2.4s ease-in-out infinite}
   .dot.off{background:var(--red);box-shadow:0 0 9px var(--red)}
   @keyframes pulse{50%{opacity:.3}}
@@ -801,9 +811,18 @@
   .ytbg{position:fixed;inset:0;z-index:-4;pointer-events:none;overflow:hidden}
   .ytbg[hidden]{display:none}
   .ytbg iframe{
+    /* cover, not fit: whichever of the two is bigger wins, so there are never
+       bars down the side. dvh/dvw where they exist so a phone's address bar
+       sliding away does not leave a gap. all in viewport units, so a zoom or a
+       window drag re-solves it with no script involved. */
     position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
     width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;border:0;
     opacity:var(--bgopacity,.7);
+  }
+  @supports (width:100dvw){
+    .ytbg iframe{
+      width:100dvw;height:56.25dvw;min-width:177.78dvh;min-height:100dvh;
+    }
   }
   html.yt-bg .bgmedia{display:none !important}
   html.yt-bg .drawer{background:rgba(10,17,25,.62)}
@@ -1340,7 +1359,7 @@
         <span class="sep">·</span>
         <span id="refreshed">--:--:--&nbsp;UTC</span>
         <span class="sep">·</span>
-        <span class="who-online" id="online">0 watching</span>
+        <button class="who-online" id="online">0 watching</button>
       </div>
     </div>
     <span class="sticker-row" id="stickHead"></span>
@@ -1465,11 +1484,6 @@
   </div>
 
   <aside class="drawer" id="drawer" hidden>
-    <div class="drawer-art" id="drawerArt" hidden>
-      <video id="artVideo" class="art-media" autoplay muted loop playsinline></video>
-      <div id="artStill" class="art-media art-still"></div>
-    </div>
-
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
       <button class="listeners" id="listenCount" title="Who has the music on right now">0 listening</button>
@@ -1480,19 +1494,12 @@
     </div>
 
     <div class="now" id="nowBox">
-      <canvas class="viz" id="viz" hidden aria-hidden="true"></canvas>
       <div class="now-label">NOW PLAYING</div>
       <div class="now-title" id="nowTitle">nothing yet</div>
       <div class="now-by" id="nowBy"></div>
       <div class="yt-holder" id="ytHolder" hidden><div id="ytPlayer"></div></div>
       <div class="bgvid-row" id="wallRow" hidden>
         <button class="ghost wall-btn" id="wallBtn" title="Use the playing video as the page background">video wallpaper: off</button>
-      </div>
-      <div class="bgvid-row" id="bgvidRow" hidden>
-        <button class="ghost bgvid-btn" id="bgvidBtn" title="Show the artwork loop behind the whole drawer">art: on</button>
-      </div>
-      <div class="bgvid-row" id="vizRow">
-        <button class="ghost viz-btn" id="vizBtn" title="React to the actual sound (needs tab audio)">beat bars: off</button>
       </div>
       <div class="vol-row" id="volRow" hidden>
         <span class="vol-ic">🔈</span>
@@ -2558,7 +2565,10 @@ function toast(msg, warn){
 
 /* ---------------- socket ---------------- */
 socket.on("connect", () => {
-  setTimeout(() => { if(typeof tellListening === "function") tellListening(); }, 300);
+  setTimeout(() => {
+    if(typeof tellListening === "function") tellListening();
+    if(typeof tellWho === "function") tellWho();
+  }, 300);
   document.getElementById("conn").classList.remove("off");
   document.getElementById("connText").textContent = "live";
   socket.emit("join", region);
@@ -2819,14 +2829,92 @@ socket.on("musiclog", arr => {
   renderLog();
 });
 
-let onlineCount = 0;   // everyone on the site, whichever region they're on
+let onlineCount = 0, watcherNames = [];   // everyone on the site, whichever board
 socket.on("presence", p => {
   onlineCount = (p && typeof p.n === "number") ? p.n : 0;
+  watcherNames = (p && Array.isArray(p.who)) ? p.who : [];
   paintPresence();
+  if(seenBox) paintSeenBox();             // keep an open list in step
 });
 function paintPresence(){
-  document.getElementById("online").textContent = onlineCount + " watching";
+  const el = document.getElementById("online");
+  if(!el) return;
+  el.textContent = onlineCount + " watching";
 }
+
+/* Who is actually on the site. Deliberately undocumented — it is just the
+   counter, and clicking it lists them. */
+let seenBox = null;
+function closeSeenBox(){
+  if(seenBox){ seenBox.remove(); seenBox = null; }
+  document.removeEventListener("click", seenBoxAway, true);
+}
+function seenBoxAway(e){
+  if(seenBox && !seenBox.contains(e.target) && e.target.id !== "online") closeSeenBox();
+}
+function paintSeenBox(){
+  if(!seenBox) return;
+  seenBox.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "who-head";
+  head.textContent = "ON THE SITE";
+  seenBox.appendChild(head);
+
+  const named = watcherNames.filter(Boolean);
+  const anon = Math.max(0, onlineCount - named.length);
+  if(!named.length && !anon){
+    const e = document.createElement("div");
+    e.className = "who-empty";
+    e.textContent = "Nobody here.";
+    seenBox.appendChild(e);
+    return;
+  }
+  const mine = named.filter(n => n === me);
+  const rest = named.filter(n => n !== me);
+  let first = true;
+  mine.concat(rest).forEach(n => {
+    const row = document.createElement("div");
+    row.className = "who-row" + (first && mine.length ? " me" : "");
+    const dot = document.createElement("span");
+    dot.className = "who-dot";
+    const lit = colorByName[n.toLowerCase()];
+    if(lit){ dot.style.background = lit; dot.style.boxShadow = "0 0 8px -1px " + lit; }
+    const nm = document.createElement("span");
+    nm.className = "who-nm";
+    nm.textContent = n;
+    if(lit) nm.style.color = lit;
+    row.append(dot, nm);
+    if(first && mine.length){
+      const tag = document.createElement("span");
+      tag.className = "who-you";
+      tag.textContent = "you";
+      row.appendChild(tag);
+    }
+    seenBox.appendChild(row);
+    first = false;
+  });
+  if(anon){
+    const e = document.createElement("div");
+    e.className = "who-empty";
+    e.textContent = anon + (anon === 1 ? " hasn't" : " haven't") + " picked a name yet";
+    seenBox.appendChild(e);
+  }
+}
+function tellWho(){ socket.emit("whoami", hasName() ? me : ""); }
+
+document.getElementById("online").onclick = e => {
+  e.stopPropagation();
+  if(seenBox){ closeSeenBox(); return; }
+  seenBox = document.createElement("div");
+  seenBox.className = "seenbox";
+  seenBox.onclick = ev => ev.stopPropagation();
+  const host = document.getElementById("online").parentElement;
+  host.style.position = host.style.position || "relative";
+  host.appendChild(seenBox);
+  paintSeenBox();
+  // the capture phase on document has already gone past for this very click
+  document.addEventListener("click", seenBoxAway, true);
+};
 
 socket.on("sync", s => {
   const r = s.region || region;
@@ -4322,6 +4410,7 @@ function setMe(v){
   } catch(e){}
   renameMyChips(old);
   tellListening();          // the listening list shows names, so refresh it
+  tellWho();                // and so does the watching list
   paintWho();
   return true;
 }
@@ -4788,7 +4877,6 @@ function paintListen(){
   listenBtn.classList.toggle("on", listening);
   document.getElementById("volRow").hidden = !listening;
   if(typeof paintWall === "function") paintWall();
-  if(typeof paintArt === "function") paintArt();
 }
 
 /* Player size. The box is the same one the music queue has always shown — this
@@ -4842,11 +4930,48 @@ function ensureBgPlayer(){
     playerVars:{ autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1,
                  mute:1, disablekb:1, fs:0, iv_load_policy:3 },
     events:{
-      onReady: () => { try { ytBgPlayer.mute(); } catch(e){} syncBgPlayer(); },
+      onReady: () => { try { ytBgPlayer.mute(); } catch(e){} fitBgPlayer(); syncBgPlayer(); },
       onError: () => { killBgPlayer(); }
     }
   });
 }
+/* Size the wallpaper to cover the window, in real pixels.
+   The CSS below already does this in viewport units, but those are resolved by
+   the browser and behave differently under page zoom — so at 110% the video
+   could end up not filling. Measuring the window and setting the pixels
+   ourselves takes the guesswork out: whichever of width or height needs to be
+   bigger to cover 16:9 wins, and the overflow is cropped by the box. */
+function fitBgPlayer(){
+  const box = document.getElementById("ytBg");
+  if(!box) return;
+  const el = box.querySelector("iframe");
+  if(!el) return;
+  const vv = window.visualViewport;
+  // visualViewport tracks pinch zoom; innerWidth/Height track the browser's own
+  const vw = Math.ceil((vv && vv.width)  || window.innerWidth  || 0);
+  const vh = Math.ceil((vv && vv.height) || window.innerHeight || 0);
+  if(!vw || !vh) return;
+  const scale = Math.max(vw / 16, vh / 9);
+  el.style.width  = Math.ceil(scale * 16) + "px";
+  el.style.height = Math.ceil(scale * 9)  + "px";
+  el.style.minWidth = "0";
+  el.style.minHeight = "0";
+  el.style.position = "absolute";
+  el.style.left = "50%";
+  el.style.top = "50%";
+  el.style.transform = "translate(-50%,-50%)";
+}
+let fitPending = null;
+function fitBgSoon(){
+  clearTimeout(fitPending);
+  fitPending = setTimeout(fitBgPlayer, 60);      // one settle after a drag
+}
+window.addEventListener("resize", fitBgSoon);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize", fitBgSoon);
+  window.visualViewport.addEventListener("scroll", fitBgSoon);
+}
+
 function killBgPlayer(){
   try { if(ytBgPlayer && ytBgPlayer.destroy) ytBgPlayer.destroy(); } catch(e){}
   ytBgPlayer = null; ytBgVideo = null;
@@ -4866,7 +4991,9 @@ function syncBgPlayer(){
   const box = document.getElementById("ytBg");
   if(box) box.hidden = !on;
   if(!on){ if(ytBgPlayer) killBgPlayer(); return; }
+  fitBgPlayer();                     // the window may have changed while it was off
   if(!ytBgPlayer){ ensureBgPlayer(); return; }
+  if(!ytBgPlayer.loadVideoById){ setTimeout(syncBgPlayer, 300); return; }   // still warming up
   const cur = music.playing;
   const want = expectedOffset(cur);
   if(ytBgVideo !== cur.videoId){
@@ -4913,56 +5040,9 @@ wallBtn.onclick = () => {
   vidWall = !vidWall;
   try { localStorage.setItem("ct:vidwall", vidWall ? "on" : "off") } catch(e){}
   paintWall();
-  paintArt();
 };
 
 // a little looping artwork behind the queue — pure decoration, your choice
-let artOn = true;
-try { artOn = localStorage.getItem("ct:drawerart") !== "off" } catch(e){}
-let artFound = false;
-const bgvidBtn = document.getElementById("bgvidBtn");
-
-function paintArt(){
-  const row = document.getElementById("bgvidRow");
-  const art = document.getElementById("drawerArt");
-  if(row) row.hidden = !artFound;
-  if(art) art.hidden = !(artFound && artOn);
-  bgvidBtn.textContent = artOn ? "art: on" : "art: off";
-  bgvidBtn.classList.toggle("on", artOn);
-  const v = document.getElementById("artVideo");
-  if(v){ (artFound && artOn) ? v.play().catch(() => {}) : v.pause(); }
-}
-bgvidBtn.onclick = () => {
-  artOn = !artOn;
-  try { localStorage.setItem("ct:drawerart", artOn ? "on" : "off") } catch(e){}
-  paintArt();
-};
-
-/* Drop a loop into public/img/ and it shows behind the queue:
-     music.mp4 / music.webm, or music.gif / music.png / music.jpg / music.webp */
-(function(){
-  const vid = document.getElementById("artVideo");
-  const still = document.getElementById("artStill");
-  const videos = ["/img/music.mp4", "/img/music.webm"];
-  const stills = ["/img/music.gif", "/img/music.webp", "/img/music.png", "/img/music.jpg"];
-  const found = el => { el.style.display = "block"; artFound = true; paintArt(); };
-
-  function tryStills(i){
-    if(i >= stills.length) return;
-    const probe = new Image();
-    probe.onload = () => { still.style.backgroundImage = "url('" + stills[i] + "')"; found(still); };
-    probe.onerror = () => tryStills(i + 1);
-    probe.src = stills[i];
-  }
-  function tryVideos(i){
-    if(i >= videos.length) return tryStills(0);
-    vid.onloadeddata = () => found(vid);
-    vid.onerror = () => tryVideos(i + 1);
-    vid.src = videos[i];
-    vid.load();
-  }
-  tryVideos(0);
-})();
 
 const volRange = document.getElementById("volRange");
 volRange.value = musicVol;
@@ -5034,7 +5114,14 @@ function ensurePlayer(){
       tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
     }
-    window.onYouTubeIframeAPIReady = () => { ytReady = true; ensurePlayer(); };
+    window.onYouTubeIframeAPIReady = () => {
+      ytReady = true;
+      ensurePlayer();
+      // the wallpaper player waits on this API too. without this it stayed
+      // blank until you toggled the button, because the first attempt to build
+      // it happened before the API had finished loading and nothing retried.
+      if(typeof syncBgPlayer === "function") syncBgPlayer();
+    };
     return;
   }
   ytReady = true;
@@ -5121,9 +5208,18 @@ function reportTitle(){
   }
 }
 // where the song should be right now, according to the shared clock
+/* A song that only just began starts at zero, not two seconds in.
+   The server stamps the start time the moment it picks the song, but every
+   browser then has to fetch and buffer the video, so by the time the player is
+   ready a couple of seconds have gone by — and it would dutifully seek past
+   the opening. Inside this grace window everyone just starts at the beginning,
+   which is both correct and in step. Past it, someone is joining a song
+   already under way, so the real offset is what they want. */
+const FRESH_SONG = 8;                    // seconds
 function expectedOffset(cur){
   if(cur.paused) return Math.max(0, cur.at || 0);   // paused: it sits where it stopped
-  return Math.max(0, (Date.now() - cur.startedAt) / 1000);
+  const elapsed = Math.max(0, (Date.now() - cur.startedAt) / 1000);
+  return elapsed < FRESH_SONG ? 0 : elapsed;
 }
 
 let ytVideo = null;      // what's actually loaded in the player
@@ -5271,114 +5367,6 @@ paintWall();
 paintListeners();
 tellListening();
 if(listening) ensurePlayer();
-
-/* ---------------- beat bars ----------------
-   A YouTube iframe is cross-origin, so its audio can't be read directly.
-   The browser will hand over tab audio if the person shares it, and that
-   stream can be analysed — hence the one-off prompt.
-   ------------------------------------------------------------------ */
-let vizOn = false, vizStream = null, vizCtx = null, vizAnalyser = null, vizRaf = null, vizData = null;
-const vizBtn = document.getElementById("vizBtn");
-const vizCanvas = document.getElementById("viz");
-
-function paintViz(){
-  vizBtn.textContent = vizOn ? "beat bars: on" : "beat bars: off";
-  vizBtn.classList.toggle("on", vizOn);
-  if(vizCanvas) vizCanvas.hidden = !vizOn;
-}
-
-async function startViz(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
-    toast("This browser can't share tab audio", true);
-    return;
-  }
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true, audio: true, preferCurrentTab: true
-    });
-    const audio = stream.getAudioTracks();
-    if(!audio.length){
-      stream.getTracks().forEach(t => t.stop());
-      toast("Pick a tab and tick “share tab audio”", true);
-      return;
-    }
-    stream.getVideoTracks().forEach(t => t.stop());   // only the sound is wanted
-    vizStream = stream;
-    vizCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = vizCtx.createMediaStreamSource(stream);
-    vizAnalyser = vizCtx.createAnalyser();
-    vizAnalyser.fftSize = 512;
-    vizAnalyser.smoothingTimeConstant = 0.75;
-    src.connect(vizAnalyser);                          // deliberately not to the speakers
-    vizData = new Uint8Array(vizAnalyser.frequencyBinCount);
-    audio[0].onended = stopViz;
-    vizOn = true;
-    paintViz();
-    drawViz();
-  } catch(e){
-    toast("Sound sharing was cancelled", true);
-  }
-}
-
-function stopViz(){
-  vizOn = false;
-  cancelAnimationFrame(vizRaf); vizRaf = null;
-  if(vizStream) vizStream.getTracks().forEach(t => t.stop());
-  vizStream = null;
-  try { if(vizCtx) vizCtx.close(); } catch(e){}
-  vizCtx = null; vizAnalyser = null;
-  const ctx = vizCanvas && vizCanvas.getContext && vizCanvas.getContext("2d");
-  if(ctx) ctx.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
-  paintViz();
-}
-
-vizBtn.onclick = () => { vizOn ? stopViz() : startViz(); };
-
-function drawViz(){
-  vizRaf = requestAnimationFrame(drawViz);
-  if(!vizAnalyser || !vizCanvas || document.hidden) return;
-  const ctx = vizCanvas.getContext && vizCanvas.getContext("2d");
-  if(!ctx) return;
-
-  // keep the canvas matched to its box
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = vizCanvas.clientWidth, h = vizCanvas.clientHeight;
-  if(vizCanvas.width !== w * dpr || vizCanvas.height !== h * dpr){
-    vizCanvas.width = w * dpr; vizCanvas.height = h * dpr;
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  vizAnalyser.getByteFrequencyData(vizData);
-
-  const bars = 40;
-  const gap = 2;
-  const bw = (w - gap * (bars - 1)) / bars;
-  const useable = Math.floor(vizData.length * 0.7);       // the top end is mostly silence
-
-  const grad = ctx.createLinearGradient(0, h, 0, 0);
-  grad.addColorStop(0, "rgba(34,211,238,.95)");
-  grad.addColorStop(.55, "rgba(167,139,250,.9)");
-  grad.addColorStop(1, "rgba(244,114,182,.85)");
-  ctx.fillStyle = grad;
-
-  for(let i = 0; i < bars; i++){
-    // low frequencies get more of the width, which is where the beat lives
-    const from = Math.floor(Math.pow(i / bars, 1.7) * useable);
-    const to = Math.max(from + 1, Math.floor(Math.pow((i + 1) / bars, 1.7) * useable));
-    let sum = 0;
-    for(let j = from; j < to; j++) sum += vizData[j];
-    const level = (sum / (to - from)) / 255;
-    const bh = Math.max(2, level * h * 0.9);
-    const x = i * (bw + gap);
-    const r = Math.min(bw / 2, 3);
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(x, h - bh, bw, bh, r);
-    else ctx.rect(x, h - bh, bw, bh);
-    ctx.fill();
-  }
-}
-paintViz();
 
 /* ---------------- clocks ---------------- */
 setInterval(() => {
