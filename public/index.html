@@ -306,6 +306,8 @@
     color:var(--text);background:#04121a;border:1px solid var(--line);border-radius:6px;
   }
   .hexbox:focus{outline:none;border-color:var(--cyan)}
+  .hexbox.bad{border-color:var(--red);color:var(--red)}
+  .hexbox.bad:focus{border-color:var(--red)}
   .chip .drop-btn:hover{color:var(--red);border-color:rgba(239,68,68,.45)}
   @media(max-width:700px){.bench-hint{display:none}}
 
@@ -855,13 +857,21 @@
       0 0 40px -12px var(--glow);
     contain:paint;
   }
-  /* a hairline edge that flows through their three shades */
+  /* A hairline edge that flows through their shades.
+     The tile size and the distance travelled have to agree or the loop snaps.
+     A percentage background-position is measured against (container - image),
+     so with a 200% tile, 0% -> 200% moves two container widths, which is
+     exactly one tile. It used to be 260% over 260% = 1.6 tiles, so six tenths
+     of a tile jumped back every seven seconds and it read as a video looping.
+     The gradient also has to start and end on the same colour, or the seam
+     shows even once the distance is right. */
   .row.tinted::before,.chip.tinted::before{
     content:"";position:absolute;inset:0;border-radius:inherit;padding:1.6px;z-index:0;
-    background:linear-gradient(112deg,var(--e1),var(--e2) 38%,var(--e3) 68%,var(--e1));
-    background-size:260% 100%;
-    animation:auraEdge 7s linear infinite;
-    will-change:background-position;
+    background:linear-gradient(112deg,
+      var(--e1) 0%,var(--e2) 25%,var(--e3) 50%,var(--e2) 75%,var(--e1) 100%);
+    background-size:200% 100%;
+    animation:auraEdge 9s linear infinite, auraBreath 4.2s ease-in-out infinite;
+    will-change:background-position,opacity;
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
     -webkit-mask-composite:xor;
     mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
@@ -873,8 +883,13 @@
   .row.tinted::before{filter:drop-shadow(0 0 4px var(--ring, transparent))}
   .chip.tinted::before{filter:drop-shadow(0 0 5px var(--ring, transparent))}
   @keyframes auraEdge{
-    from{background-position:0 50%}
-    to  {background-position:260% 50%}
+    from{background-position:0% 50%}
+    to  {background-position:200% 50%}
+  }
+  /* the breathing: symmetric, so there is no seam to hide */
+  @keyframes auraBreath{
+    0%,100%{opacity:.72}
+    50%    {opacity:1}
   }
   /* soft light drifting across */
   .row.tinted::after,.chip.tinted::after{
@@ -882,12 +897,15 @@
     background:linear-gradient(104deg,transparent 40%,var(--glow) 50%,transparent 60%);
     opacity:.32;
     transform:translate3d(-130%,0,0);
-    animation:auraSheen 6.5s ease-in-out infinite;
+    animation:auraSheen 9s cubic-bezier(.45,0,.55,1) infinite;
     will-change:transform;
   }
+  /* one pass, then it waits out of sight. both ends sit off the element so the
+     reset cannot be seen — and it now shares the edge's 9s period, so the two
+     never drift in and out of step with each other. */
   @keyframes auraSheen{
     0%  {transform:translate3d(-130%,0,0)}
-    55% {transform:translate3d(130%,0,0)}
+    45% {transform:translate3d(130%,0,0)}
     100%{transform:translate3d(130%,0,0)}
   }
   .row.tinted > *,.chip.tinted > *{position:relative;z-index:1}
@@ -899,7 +917,7 @@
   .row.tinted .icon:hover{background:rgba(255,255,255,.10)}
   @media(prefers-reduced-motion:reduce){
     .row.tinted,.chip.tinted{animation:none}
-    .row.tinted::before,.chip.tinted::before{animation:none}
+    .row.tinted::before,.chip.tinted::before{animation:none;opacity:1}
     .row.tinted::after,.chip.tinted::after{animation:none;opacity:0}
   }
   .row.dragging{opacity:.3}
@@ -926,8 +944,8 @@
   }
   .row.g3 .who{animation:nolife 2.4s ease-in-out infinite}
   @keyframes nolife{
-    0%,100%{filter:none}
-    50%{filter:brightness(1.22) saturate(1.15)}
+    0%,100%{filter:brightness(1) saturate(1)}
+    50%    {filter:brightness(1.22) saturate(1.15)}
   }
   @media(prefers-reduced-motion:reduce){
     .row.g3, .row.g3 .who{animation:none}
@@ -1531,6 +1549,23 @@ function recomputeColors(){
    A person can carry a second colour. Everything of theirs then runs between
    the two: the name, the dot, and the glow around their row. One colour and
    nothing changes — the aura still spreads its own shades from that one. */
+/* Read a colour out of whatever someone typed or pasted.
+   Deliberately forgiving: it keeps the hex digits and throws away everything
+   else, so a leading #, stray spaces, and the zero-width characters that come
+   along when you copy a swatch out of a web page all stop mattering. Accepts
+   the three-digit short form too. Returns null if it cannot make a colour. */
+function parseHex(v){
+  const t = String(v == null ? "" : v)
+    // whitespace and the invisible characters a copy-paste drags along
+    .replace(/[\s\u200b-\u200f\u2060\ufeff]/g, "")
+    .replace(/^#/, "");
+  // what is left has to be hex and nothing else — stripping every non-hex
+  // character instead would happily turn "electric cyan" into #eeccca
+  if(/^[0-9a-fA-F]{3}$/.test(t)) return "#" + t.split("").map(c => c + c).join("").toLowerCase();
+  if(/^[0-9a-fA-F]{6}$/.test(t)) return "#" + t.toLowerCase();
+  return null;
+}
+
 function blendHex(a, b, t){
   const x = hexRGB(a), y = hexRGB(b);
   if(!x || !y) return a;
@@ -3136,9 +3171,6 @@ function openColorMenu(anchor, person){
 
   /* A wheel and a hex box for each half of the pair, so either can be typed
      exactly. Both rows behave the same; only what they send differs. */
-  const okHex = v => /^#?[0-9a-fA-F]{6}$/.test(v);
-  const norm  = v => (v[0] === "#" ? v : "#" + v).toLowerCase();
-
   function customRow(current, fallback, label, apply){
     const box = document.createElement("div");
     box.className = "colcustom";
@@ -3154,17 +3186,37 @@ function openColorMenu(anchor, person){
     hex.className = "hexbox";
     hex.value = current || "";
     hex.placeholder = "#rrggbb";
-    hex.maxLength = 7;
+    // Room to spare on purpose. This was 7, which is exactly "#rrggbb" — so a
+    // value pasted from a web page with a stray invisible character attached
+    // got silently chopped to five digits and then refused. parseHex throws
+    // the junk away instead, so the extra room costs nothing.
+    hex.maxLength = 24;
     hex.spellcheck = false;
-    hex.title = label;
+    hex.autocapitalize = "off";
+    hex.setAttribute("autocorrect", "off");
+    hex.title = label + " — #rrggbb or #rgb";
     hex.setAttribute("aria-label", label);
 
-    wheel.oninput = () => { hex.value = wheel.value; };      // preview as you drag
-    wheel.onchange = () => apply(wheel.value);               // apply closes the menu
+    const bad = on => {
+      hex.classList.toggle("bad", on);
+      hex.title = on
+        ? "That is not a colour — six hex digits, like #00ffff, or three like #0ff"
+        : label + " — #rrggbb or #rgb";
+    };
+
+    wheel.oninput = () => { hex.value = wheel.value; bad(false); };   // preview as you drag
+    wheel.onchange = () => apply(wheel.value);                        // apply closes the menu
+    hex.oninput = () => {
+      const p = parseHex(hex.value);
+      bad(hex.value.trim() !== "" && !p);
+      if(p) wheel.value = p;              // the swatch shows it before you commit
+    };
     hex.onkeydown = e => {
       if(e.key === "Enter"){
-        const v = hex.value.trim();
-        if(okHex(v)) apply(norm(v));
+        e.preventDefault();
+        const p = parseHex(hex.value);
+        // say so instead of doing nothing, which is what it used to do
+        if(p) apply(p); else { bad(true); hex.select(); }
       }
       if(e.key === "Escape") closeMenu();
     };
@@ -3175,14 +3227,15 @@ function openColorMenu(anchor, person){
   // the base colour goes under its own palette
   m.insertBefore(
     customRow(person.color, "#22d3ee", "Base colour",
-              v => okHex(v) && push(norm(v), person.color2)),
+              v => { const c = parseHex(v); if(c) push(c, person.color2); }),
     h2);
 
   // and the blend under its own. with no base yet, this becomes the base.
   m.appendChild(customRow(person.color2, person.color || "#f472b6", "Blend colour",
     v => {
-      if(!okHex(v)) return;
-      person.color ? push(person.color, norm(v)) : push(norm(v), null);
+      const c = parseHex(v);
+      if(!c) return;
+      person.color ? push(person.color, c) : push(c, null);
     }));
 
   if(person.color){
