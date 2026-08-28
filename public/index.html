@@ -223,8 +223,14 @@
     font-family:var(--name-face);font-weight:600;
   }
   @media(max-width:900px){.chip .nm{flex:none}}
-  /* their colour, as a dot, so a name still reads as theirs at a glance */
-  .pdot{width:7px;height:7px;border-radius:50%;flex:none;background:#3f556a}
+  /* their colour, as a dot — and the button that changes it */
+  .pdot{
+    width:11px;height:11px;flex:none;padding:0;border-radius:50%;
+    background:#3f556a;border:1px solid rgba(255,255,255,.18);cursor:pointer;
+    transition:transform .12s,border-color .12s;
+  }
+  .pdot:hover{transform:scale(1.25);border-color:#fff}
+  .pdot:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   /* right-hand slot: where they're sitting, or who owns the name */
   .pmeta{
     flex:none;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -3005,9 +3011,12 @@ function openColorMenu(anchor, person){
   document.body.appendChild(m);
 
   const r = anchor.getBoundingClientRect();
-  const w = m.offsetWidth, hh = m.offsetHeight;
-  m.style.left = Math.max(8, Math.min(r.left - 8, window.innerWidth - w - 10)) + "px";
-  m.style.top = (r.bottom + 6 + hh > window.innerHeight - 8 ? Math.max(8, r.top - hh - 6) : r.bottom + 6) + "px";
+  // not `hh` — that is the hour formatter now, and shadowing it here would put
+  // it in the dead zone for this whole function
+  const boxW = m.offsetWidth, boxH = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left - 8, window.innerWidth - boxW - 10)) + "px";
+  m.style.top = (r.bottom + 6 + boxH > window.innerHeight - 8
+    ? Math.max(8, r.top - boxH - 6) : r.bottom + 6) + "px";
   menuEl = m;
   menuOwner = anchor;
 }
@@ -3035,13 +3044,21 @@ function renderBench(){
       + (mine ? " mine" : "")
       + (pickedPerson === p.id ? " picked" : "");
 
-    // their colour as a dot, so the row still reads as theirs at a glance
-    const dot = document.createElement("span");
+    // their colour as a dot, and the way to change it. openColorMenu has always
+    // been in here with a palette, a wheel and a hex box, but nothing ever
+    // opened it — so this is the handle it never had.
+    const dot = document.createElement("button");
     dot.className = "pdot";
+    dot.title = "Colour for " + p.name;
+    dot.setAttribute("aria-label", "Colour for " + p.name);
     if(plit){
       dot.style.background = plit;
       dot.style.boxShadow = "0 0 8px -1px " + plit;
     }
+    dot.onclick = ev => {
+      ev.stopPropagation();          // not a pick-this-person click
+      openColorMenu(dot, p);
+    };
     chip.appendChild(dot);
 
     const nm = document.createElement("span");
@@ -4073,6 +4090,10 @@ socket.on("music", m => {
   const after = music.playing && music.playing.id;
   if(before !== after) lastPos = null;      // new song, forget the old position
   renderMusic();
+  // the wallpaper depends on what is playing, so it has to be repainted here
+  // too — it used to be refreshed only when you pressed a button, so once a
+  // song ended the page background stayed hidden until you toggled something
+  if(typeof paintWall === "function") paintWall();
   syncPlayer();
 });
 
@@ -4152,18 +4173,21 @@ function killBgPlayer(){
   const box = document.getElementById("ytBg");
   if(box) box.innerHTML = '<div id="ytBgPlayer"></div>';
 }
+/* Only claim the page background when there is genuinely a video to put there.
+   "video wallpaper: on" with an empty queue used to hide whatever is in
+   public/img/ — the html.yt-bg rule kills .bgmedia with !important — and then
+   put nothing behind it, so the page just went black. */
+function wallLive(){
+  return vidWall && listening && !!(music.playing && music.playing.videoId);
+}
+
 function syncBgPlayer(){
-  const on = vidWall && listening;
+  const on = wallLive();
   const box = document.getElementById("ytBg");
   if(box) box.hidden = !on;
   if(!on){ if(ytBgPlayer) killBgPlayer(); return; }
   if(!ytBgPlayer){ ensureBgPlayer(); return; }
   const cur = music.playing;
-  if(!cur){
-    try { if(ytBgPlayer.stopVideo) ytBgPlayer.stopVideo(); } catch(e){}
-    ytBgVideo = null;
-    return;
-  }
   const want = expectedOffset(cur);
   if(ytBgVideo !== cur.videoId){
     ytBgVideo = cur.videoId;
@@ -4186,9 +4210,16 @@ function syncBgPlayer(){
 }
 
 function paintWall(){
-  const on = vidWall && listening;
-  document.documentElement.classList.toggle("yt-bg", on);
-  wallBtn.textContent = vidWall ? "video wallpaper: on" : "video wallpaper: off";
+  const live = wallLive();
+  // the class is what hides the page's own background, so it only goes on
+  // while a video is actually up there to replace it
+  document.documentElement.classList.toggle("yt-bg", live);
+  wallBtn.textContent = vidWall
+    ? (live ? "video wallpaper: on" : "video wallpaper: on (waiting for a song)")
+    : "video wallpaper: off";
+  wallBtn.title = vidWall && !live
+    ? "On, but nothing is playing — your own background stays until a song starts"
+    : "Use the playing video as the page background";
   wallBtn.classList.toggle("on", vidWall);
   document.getElementById("wallRow").hidden = !listening;
   // never display:none the player — that stops playback dead. it also stays put
