@@ -3035,8 +3035,7 @@ function decayedPct(c){
 function nextDrop(c){
   const d = dropsOwed(c);
   if(!d) return null;
-  const at = whenActiveReached(Date.now(), d.wait);
-  return at ? { at, in: at - Date.now() } : null;
+  return { at: Date.now() + d.wait, in: d.wait };   // wall clock, like the fall itself
 }
 
 /* How many drops have landed that nobody wrote down, and how long until the
@@ -3046,11 +3045,15 @@ function dropsOwed(c){
   if(!c || !c.entries.length) return null;
   const cycle = c.occupiedAt || c.pctAt || 0;
   if(!cycle) return null;
+  // plain wall-clock: the curfew freezes the climb, not the fall. measuring
+  // this against the frozen clock meant nothing dropped between 22:00 and
+  // 08:00 UTC, which is the middle of the day for a lot of people.
+  const now = Date.now();
   const every = DROP_EVERY() * 60000;
-  const sinceStart = activeMsBetween(cycle, Date.now());
+  const sinceStart = Math.max(0, now - cycle);
   const landed = Math.floor(sinceStart / every);
-  const readAt = Math.max(c.pctAt || 0, cycle);
-  const atRead = Math.floor(activeMsBetween(cycle, readAt) / every);
+  const readAt = Math.min(now, Math.max(c.pctAt || 0, cycle));
+  const atRead = Math.floor(Math.max(0, readAt - cycle) / every);
   return { owed: Math.max(0, landed - atRead),
            wait: (landed + 1) * every - sinceStart };
 }
@@ -5016,6 +5019,12 @@ function syncBgPlayer(){
   } catch(e){}
 }
 
+/* The wallpaper only ever corrected itself when a music message happened to
+   arrive, so between songs it could quietly slide away from the drawer player.
+   A slow heartbeat keeps the two on the same frame — it only ever acts when
+   they are more than a few seconds apart, so it costs nothing while they agree. */
+setInterval(() => { if(wallLive()) syncBgPlayer(); }, 5000);
+
 function paintWall(){
   const live = wallLive();
   // the class is what hides the page's own background, so it only goes on
@@ -5208,18 +5217,16 @@ function reportTitle(){
   }
 }
 // where the song should be right now, according to the shared clock
-/* A song that only just began starts at zero, not two seconds in.
-   The server stamps the start time the moment it picks the song, but every
-   browser then has to fetch and buffer the video, so by the time the player is
-   ready a couple of seconds have gone by — and it would dutifully seek past
-   the opening. Inside this grace window everyone just starts at the beginning,
-   which is both correct and in step. Past it, someone is joining a song
-   already under way, so the real offset is what they want. */
-const FRESH_SONG = 8;                    // seconds
+/* Where the song should be right now, for everyone.
+   The server starts a new song's clock a couple of seconds in the future so
+   every browser has time to buffer, which makes this negative for that moment
+   and clamps to zero — so a new song begins at the beginning everywhere.
+   No special case for "this song is new": both the drawer player and the
+   wallpaper ask this same question and get the same answer whenever they
+   happen to load, which is the only way they stay in step. */
 function expectedOffset(cur){
   if(cur.paused) return Math.max(0, cur.at || 0);   // paused: it sits where it stopped
-  const elapsed = Math.max(0, (Date.now() - cur.startedAt) / 1000);
-  return elapsed < FRESH_SONG ? 0 : elapsed;
+  return Math.max(0, (Date.now() - cur.startedAt) / 1000);
 }
 
 let ytVideo = null;      // what's actually loaded in the player

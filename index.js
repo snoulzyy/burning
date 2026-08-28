@@ -327,12 +327,23 @@ let lastSeekNote = 0;
 let lastSeekAt = 0;
 let songHandle = null;
 
+/* A song's clock is started slightly in the future.
+   Every browser needs a second or two to fetch and buffer the video, and if the
+   clock is already running by the time the player is ready it dutifully seeks
+   past the opening — which is why songs used to begin two or three seconds in.
+   Starting the clock a moment ahead gives everyone time to be ready, and the
+   offset they each compute is negative until then, which clamps to zero. So
+   they all begin at the beginning, together, without anyone special-casing
+   "this song is new" — which is what made the wallpaper and the main player
+   disagree, since they load at different moments. */
+const SONG_LEAD = 2500;
+
 function startNext() {
   const next = state.music.queue.shift();
   state.music.playing = next
     ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by,
-        token: next.token, startedAt: Date.now(), duration: next.duration || 0,
-        paused: false, at: 0 }
+        token: next.token, startedAt: Date.now() + SONG_LEAD,
+        duration: next.duration || 0, paused: false, at: 0 }
     : null;
   scheduleSongEnd();
 }
@@ -964,11 +975,17 @@ io.on("connection", socket => {
            after the last reading. */
         const cycle = c.occupiedAt || c.pctAt || 0;
         if (cycle) {
+          /* Plain wall-clock time, not the curfew-adjusted kind.
+             The freeze window is about burning not *climbing* while a channel
+             sits empty. The fall while people are farming it keeps running
+             regardless — using the frozen clock here meant that between 22:00
+             and 08:00 UTC nothing dropped at all, which is most of the day in
+             half the world. */
           const every = state.proj.dropEvery * 60000;
-          const sinceStart = projActiveMs(cycle, t);
+          const sinceStart = Math.max(0, t - cycle);
           const landed = Math.floor(sinceStart / every);          // since the first kill
-          const readAt = Math.max(c.pctAt || 0, cycle);           // never before it began
-          const atRead = Math.floor(projActiveMs(cycle, readAt) / every);
+          const readAt = Math.min(t, Math.max(c.pctAt || 0, cycle));
+          const atRead = Math.floor(Math.max(0, readAt - cycle) / every);
           const owed = Math.max(0, landed - atRead);              // the ones nobody logged
           const wait = (landed + 1) * every - sinceStart;         // until the next falls
           const was = c.pct;
