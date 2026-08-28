@@ -332,6 +332,69 @@ function startNext() {
 
 // the server moves the queue along itself once it knows how long a song runs,
 // so nothing stalls just because nobody happens to be listening
+/* ---------------- the drop that was still coming ----------------
+   When a channel empties, one more drop is usually still in flight. Working out
+   *when* it lands is not enough on its own: something has to wake up and take
+   it off, or the board sits on the old number until somebody happens to open
+   the projections list. So each pending drop gets a timer, and applying it is a
+   real edit — it changes the stored burning, writes a log line, and goes out to
+   everyone, exactly as if a person had set it. */
+const dropTimers = new Map();          // "RD1:12" -> timeout handle
+
+function clearDropTimer(region, idx) {
+  const k = region + ":" + idx;
+  if (dropTimers.has(k)) {
+    clearTimeout(dropTimers.get(k));
+    dropTimers.delete(k);
+  }
+}
+
+function applyPendingDrop(region, idx) {
+  const board = state[region] && state[region].channels;
+  const c = board && board[idx];
+  if (!c || !c.pendingAt) return;
+  if (c.entries.length) { c.pendingAt = null; return; }   // somebody came back
+  if (Date.now() < c.pendingAt) { scheduleDrop(region, idx); return; }
+
+  const landed = c.pendingAt;
+  const was = c.pct;
+  c.pct = Math.max(0, Math.min(100, was - state.proj.drop));
+  // stamped when it actually fell, not when this timer happened to fire, so the
+  // climb back up counts from the right moment
+  c.pctAt = landed;
+  c.emptiedAt = landed;
+  c.pendingAt = null;
+  if (c.pct !== was) {
+    note(region, `${ch(idx)} burning ${was}% → ${c.pct}% — the drop that was still coming`);
+  }
+  persist();
+  broadcast(region);
+}
+
+function scheduleDrop(region, idx) {
+  clearDropTimer(region, idx);
+  const board = state[region] && state[region].channels;
+  const c = board && board[idx];
+  if (!c || !c.pendingAt || c.entries.length) return;
+  const wait = c.pendingAt - Date.now();
+  if (wait <= 0) { applyPendingDrop(region, idx); return; }
+  const k = region + ":" + idx;
+  dropTimers.set(k, setTimeout(() => {
+    dropTimers.delete(k);
+    applyPendingDrop(region, idx);
+  }, wait + 250));
+}
+
+// after a restart, pick up every drop that was owed — including any that fell
+// while the process was down
+function scheduleAllDrops() {
+  REGIONS.forEach(r => {
+    const b = state[r.id] && state[r.id].channels;
+    if (!b) return;
+    b.forEach((c, i) => { if (c.pendingAt) scheduleDrop(r.id, i); });
+  });
+}
+
 function scheduleSongEnd() {
   clearTimeout(songHandle);
   songHandle = null;
@@ -430,8 +493,9 @@ io.on("connection", socket => {
         const same = target.pct === v;
         target.pct = v;
         target.pctAt = Date.now();
-        // a reading someone actually took supersedes any drop we were holding
+        // a number someone actually set supersedes any drop we were holding
         target.pendingAt = null;
+        clearDropTimer(region, at);
         note(region, same
           ? `${ch(at)} still ${v}% — confirmed by ${by}`
           : `${ch(at)} burning set to ${v}% by ${by}`);
@@ -904,14 +968,17 @@ io.on("connection", socket => {
           c.pctAt = t;
           c.pendingAt = t + wait;      // the drop still to come
           c.emptiedAt = c.pendingAt;   // and the climb starts when it does
+          scheduleDrop(region, i);     // and something has to actually apply it
         } else {
           c.emptiedAt = t;
           c.pendingAt = null;
+          clearDropTimer(region, i);
         }
         c.occupiedAt = null;
       } else if (nowN > 0) {
         c.emptiedAt = null;
         c.pendingAt = null;            // somebody is on it again
+        clearDropTimer(region, i);
         if (!c.occupiedAt) c.occupiedAt = t;
       }
     });
@@ -975,6 +1042,7 @@ async function main() {
   hydrate(await storage.load());
   scheduleMvpTimer();
   scheduleSongEnd();
+  scheduleAllDrops();     // any drop that fell while we were down lands now
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Channel tracker on :${PORT} — open /${live[0].toLowerCase()}`);
   });
