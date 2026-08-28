@@ -272,7 +272,11 @@
   .colmenu{
     position:fixed;z-index:60;padding:10px;border-radius:12px;
     background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
+    /* three slots is a tall box — let it scroll rather than run off the screen */
+    max-height:calc(100vh - 24px);overflow-y:auto;scrollbar-width:thin;
   }
+  .colmenu::-webkit-scrollbar{width:8px}
+  .colmenu::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:8px}
   .colmenu h4{margin:0 0 8px;font:inherit;font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--dim)}
   .colgrid{display:grid;grid-template-columns:repeat(6,22px);gap:6px}
   .colgrid button{
@@ -1467,7 +1471,8 @@ try {
 const PALETTE = ["#22d3ee","#2dd4bf","#22c55e","#a3e635","#eab308","#f59e0b",
                  "#f97316","#ef4444","#f472b6","#a855f7","#60a5fa","#dbe7f2"];
 let colorOf = {};       // pid -> colour, rebuilt whenever the roster arrives
-let color2Of = {};      // pid -> second colour, for the ones who blend two
+let color2Of = {};      // pid -> second colour, for the ones who blend
+let color3Of = {};      // pid -> third colour
 
 let colorByName = {};   // lowercase name -> colour, for chat lines
 
@@ -1535,12 +1540,14 @@ function rgba(hex, a){
 function recomputeColors(){
   colorOf = {};
   color2Of = {};
+  color3Of = {};
   colorByName = {};
   Object.keys(rosters).forEach(area =>
     (rosters[area] || []).forEach(p => {
       if(!p.color) return;
       colorOf[p.id] = p.color;
       if(p.color2) color2Of[p.id] = p.color2;
+      if(p.color3) color3Of[p.id] = p.color3;
       colorByName[p.name.trim().toLowerCase()] = p.color;
     }));
 }
@@ -1574,24 +1581,44 @@ function blendHex(a, b, t){
     .map(v => v.toString(16).padStart(2,"0")).join("");
 }
 
-// the three stops the aura animates through
-function auraPair(c1, c2){
-  return c2 ? [c1, blendHex(c1, c2, .5), c2] : auraRamp(c1);
+/* The aura has always animated through three stops. With three colours those
+   stops are simply the three; with two we put the midpoint between them; with
+   one the ramp invents a darker and a lighter shade as it always did. */
+function auraPair(c1, c2, c3){
+  if(c3) return [c1, c2, c3];
+  if(c2) return [c1, blendHex(c1, c2, .5), c2];
+  return auraRamp(c1);
 }
 
-// paint text in one colour, or as a gradient between two
-function inkText(el, c1, c2){
-  if(!c1) return;
-  if(!c2){
-    el.style.color = glowInk(c1);
+// what a name's gradient runs through, brightened so it stays readable
+function inkStops(c1, c2, c3){
+  return [c1, c2, c3].filter(Boolean).map(glowInk);
+}
+
+// paint text in one colour, or as a gradient across two or three
+function inkText(el, c1, c2, c3){
+  const cols = inkStops(c1, c2, c3);
+  if(!cols.length) return;
+  if(cols.length === 1){
+    el.style.color = cols[0];
+    el.style.backgroundImage = "";
+    el.style.webkitTextFillColor = "";
     return;
   }
-  const g = "linear-gradient(100deg," + glowInk(c1) + "," + glowInk(c2) + ")";
-  el.style.backgroundImage = g;
+  el.style.backgroundImage = "linear-gradient(100deg," + cols.join(",") + ")";
   el.style.webkitBackgroundClip = "text";
   el.style.backgroundClip = "text";
   el.style.color = "transparent";
   el.style.webkitTextFillColor = "transparent";
+}
+
+// the same colours as hard bands, for the little round swatch
+function bandGradient(cols){
+  if(!cols.length) return "";
+  if(cols.length === 1) return cols[0];
+  const step = 100 / cols.length, parts = [];
+  cols.forEach((c, i) => parts.push(c + " " + (i * step) + "%", c + " " + ((i + 1) * step) + "%"));
+  return "linear-gradient(135deg," + parts.join(",") + ")";
 }
 
 let myClaimNames = new Set();
@@ -3118,60 +3145,27 @@ function openColorMenu(anchor, person){
   m.className = "colmenu";
   m.onclick = e => e.stopPropagation();
 
-  // whatever is picked, the other half of the pair rides along unchanged
-  const push = (c1, c2) => {
+  /* Three slots, in order. Everything of theirs — the name, the dot, the glow
+     around their row — runs across whichever ones are filled. */
+  const SLOTS = [
+    { head:"COLOUR",     label:"First colour",  fallback:"#22d3ee" },
+    { head:"BLEND WITH", label:"Second colour", fallback:"#f472b6" },
+    { head:"AND WITH",   label:"Third colour",  fallback:"#a3e635" }
+  ];
+  const cur = [person.color || null, person.color2 || null, person.color3 || null];
+
+  // set one slot, send all three. gaps get closed up, so clearing the second
+  // promotes the third instead of leaving a hole the server would drop anyway.
+  const setSlot = (i, col) => {
+    const next = cur.slice();
+    next[i] = col;
+    const packed = next.filter(Boolean).filter((v, k, a) => a.indexOf(v) === k);
     closeMenu();
-    send({ type:"person-color", id:person.id, color:c1, color2: c2 || "" });
+    send({ type:"person-color", id:person.id,
+           color: packed[0] || "", color2: packed[1] || "", color3: packed[2] || "" });
   };
 
-  const h = document.createElement("h4");
-  h.textContent = "COLOUR";
-  m.appendChild(h);
-
-  const g = document.createElement("div");
-  g.className = "colgrid";
-  PALETTE.forEach(col => {
-    const b = document.createElement("button");
-    b.style.background = col;
-    b.title = col;
-    if(person.color === col) b.classList.add("on");
-    b.onclick = () => push(col, person.color2);
-    g.appendChild(b);
-  });
-  m.appendChild(g);
-
-  /* Second colour. Their name, dot and glow then run between the two rather
-     than sitting on one. Picking one before a base colour just sets the base. */
-  const h2 = document.createElement("h4");
-  h2.className = "col-h2";
-  h2.textContent = "BLEND WITH";
-  m.appendChild(h2);
-
-  const g2 = document.createElement("div");
-  g2.className = "colgrid";
-
-  const none = document.createElement("button");
-  none.className = "col-none";
-  none.title = "One colour only";
-  none.textContent = "\u00d7";
-  if(!person.color2) none.classList.add("on");
-  none.onclick = () => push(person.color || PALETTE[0], null);
-  g2.appendChild(none);
-
-  PALETTE.slice(0, 11).forEach(col => {
-    const b = document.createElement("button");
-    b.style.background = col;
-    b.title = "Blend with " + col;
-    if(person.color2 === col) b.classList.add("on");
-    // no base colour yet? then this is the base, not the blend
-    b.onclick = () => person.color ? push(person.color, col) : push(col, null);
-    g2.appendChild(b);
-  });
-  m.appendChild(g2);
-
-  /* A wheel and a hex box for each half of the pair, so either can be typed
-     exactly. Both rows behave the same; only what they send differs. */
-  function customRow(current, fallback, label, apply){
+  function customRow(current, fallback, label, onPick){
     const box = document.createElement("div");
     box.className = "colcustom";
 
@@ -3186,15 +3180,13 @@ function openColorMenu(anchor, person){
     hex.className = "hexbox";
     hex.value = current || "";
     hex.placeholder = "#rrggbb";
-    // Room to spare on purpose. This was 7, which is exactly "#rrggbb" — so a
-    // value pasted from a web page with a stray invisible character attached
-    // got silently chopped to five digits and then refused. parseHex throws
-    // the junk away instead, so the extra room costs nothing.
+    // Room to spare on purpose. This was 7, exactly "#rrggbb", so a value
+    // pasted out of a web page with a stray invisible character attached got
+    // chopped to five digits and then refused. parseHex drops the junk.
     hex.maxLength = 24;
     hex.spellcheck = false;
     hex.autocapitalize = "off";
     hex.setAttribute("autocorrect", "off");
-    hex.title = label + " — #rrggbb or #rgb";
     hex.setAttribute("aria-label", label);
 
     const bad = on => {
@@ -3203,20 +3195,21 @@ function openColorMenu(anchor, person){
         ? "That is not a colour — six hex digits, like #00ffff, or three like #0ff"
         : label + " — #rrggbb or #rgb";
     };
+    bad(false);
 
-    wheel.oninput = () => { hex.value = wheel.value; bad(false); };   // preview as you drag
-    wheel.onchange = () => apply(wheel.value);                        // apply closes the menu
+    wheel.oninput = () => { hex.value = wheel.value; bad(false); };
+    wheel.onchange = () => onPick(wheel.value);
     hex.oninput = () => {
-      const p = parseHex(hex.value);
-      bad(hex.value.trim() !== "" && !p);
-      if(p) wheel.value = p;              // the swatch shows it before you commit
+      const c = parseHex(hex.value);
+      bad(hex.value.trim() !== "" && !c);
+      if(c) wheel.value = c;              // the swatch shows it before you commit
     };
     hex.onkeydown = e => {
       if(e.key === "Enter"){
         e.preventDefault();
-        const p = parseHex(hex.value);
-        // say so instead of doing nothing, which is what it used to do
-        if(p) apply(p); else { bad(true); hex.select(); }
+        const c = parseHex(hex.value);
+        // say so, instead of doing nothing, which is what it used to do
+        if(c) onPick(c); else { bad(true); hex.select(); }
       }
       if(e.key === "Escape") closeMenu();
     };
@@ -3224,25 +3217,45 @@ function openColorMenu(anchor, person){
     return box;
   }
 
-  // the base colour goes under its own palette
-  m.insertBefore(
-    customRow(person.color, "#22d3ee", "Base colour",
-              v => { const c = parseHex(v); if(c) push(c, person.color2); }),
-    h2);
+  SLOTS.forEach((slot, i) => {
+    const h = document.createElement("h4");
+    if(i) h.className = "col-h2";
+    h.textContent = slot.head;
+    m.appendChild(h);
 
-  // and the blend under its own. with no base yet, this becomes the base.
-  m.appendChild(customRow(person.color2, person.color || "#f472b6", "Blend colour",
-    v => {
-      const c = parseHex(v);
-      if(!c) return;
-      person.color ? push(person.color, c) : push(c, null);
-    }));
+    const g = document.createElement("div");
+    g.className = "colgrid";
+
+    // the first colour is the one they have to have; the others can be cleared
+    if(i){
+      const none = document.createElement("button");
+      none.className = "col-none";
+      none.title = "Leave this one out";
+      none.textContent = "\u00d7";
+      if(!cur[i]) none.classList.add("on");
+      none.onclick = () => setSlot(i, null);
+      g.appendChild(none);
+    }
+
+    PALETTE.slice(0, i ? 11 : 12).forEach(col => {
+      const b = document.createElement("button");
+      b.style.background = col;
+      b.title = slot.label + " " + col;
+      if(cur[i] === col) b.classList.add("on");
+      b.onclick = () => setSlot(i, col);
+      g.appendChild(b);
+    });
+    m.appendChild(g);
+
+    m.appendChild(customRow(cur[i], cur[i - 1] || slot.fallback, slot.label,
+      v => { const c = parseHex(v); if(c) setSlot(i, c); }));
+  });
 
   if(person.color){
     const prev = document.createElement("div");
     prev.className = "col-preview";
     prev.textContent = person.name;
-    inkText(prev, person.color, person.color2);
+    inkText(prev, person.color, person.color2, person.color3);
     m.appendChild(prev);
   }
 
@@ -3258,6 +3271,7 @@ function openColorMenu(anchor, person){
   menuEl = m;
   menuOwner = anchor;
 }
+
 
 function renderBench(){
   if(!benchEl) return;
@@ -3275,7 +3289,8 @@ function renderBench(){
     // a name belongs to whoever added it, so there's nothing to press
     const mine = myIds.has(p.id);
     const plit = p.color ? glowInk(p.color) : null;
-    const plit2 = (p.color && p.color2) ? glowInk(p.color2) : null;
+    const pcols = p.color ? inkStops(p.color, p.color2, p.color3) : [];
+    const plit2 = pcols.length > 1 ? pcols[pcols.length - 1] : null;
 
     const chip = document.createElement("div");
     chip.className = "chip"
@@ -3291,9 +3306,7 @@ function renderBench(){
     dot.title = "Colour for " + p.name;
     dot.setAttribute("aria-label", "Colour for " + p.name);
     if(plit){
-      dot.style.background = plit2
-        ? "linear-gradient(135deg," + plit + " 0%," + plit + " 45%," + plit2 + " 55%," + plit2 + " 100%)"
-        : plit;
+      dot.style.background = bandGradient(pcols);
       dot.style.boxShadow = "0 0 8px -1px " + (plit2 || plit);
     }
     dot.onclick = ev => {
@@ -3306,7 +3319,7 @@ function renderBench(){
     nm.className = "nm";
     nm.textContent = p.name;
     if(p.color){
-      const [pa, pb, pc] = auraPair(p.color, p.color2);
+      const [pa, pb, pc] = auraPair(p.color, p.color2, p.color3);
       chip.classList.add("tinted");
       chip.style.setProperty("--a1", rgba(pa, .30));
       chip.style.setProperty("--a2", rgba(pb, .13));
@@ -3316,7 +3329,7 @@ function renderBench(){
       chip.style.setProperty("--e3", rgba(pc, .85));
       chip.style.setProperty("--glow", rgba(plit2 || plit, .66));
       chip.style.setProperty("--ring", rgba(glowInk(pb), .58));
-      inkText(nm, p.color, p.color2);
+      inkText(nm, p.color, p.color2, p.color3);
       nm.style.fontWeight = "700";
     }
     chip.appendChild(nm);
@@ -3660,10 +3673,11 @@ function row(en,ci){
 
   const col = en.pid ? colorOf[en.pid] : null;
   const col2 = en.pid ? (color2Of[en.pid] || null) : null;
+  const col3 = en.pid ? (color3Of[en.pid] || null) : null;
   const ink = col ? inkOn(col) : null;
   const lit = col ? glowInk(col) : null;
   if(col){
-    const [a, b, c2] = auraPair(col, col2);
+    const [a, b, c2] = auraPair(col, col2, col3);
     r.classList.add("tinted");
     r.style.setProperty("--a1", rgba(a, .30));
     r.style.setProperty("--a2", rgba(b, .13));
@@ -3708,7 +3722,7 @@ function row(en,ci){
   } else {
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
-    inkText(who, col, col2);
+    inkText(who, col, col2, col3);
     who.draggable = true; who.title = "Drag to another channel";
     who.ondragstart = e => {
       e.stopPropagation();
@@ -3820,9 +3834,18 @@ document.addEventListener("keydown", e => {
   if(pickedPerson){ pickedPerson = null; renderBench(); render(); }
   if(picked){ picked = null; render() }
 });
-window.addEventListener("resize", closeMenu);
+/* A popover closes when the page moves under it, since it is anchored to
+   something that just moved. But not while you are typing in it: pasting makes
+   the browser scroll the focused field into view, and on a phone the keyboard
+   opening fires a resize. Either one used to yank the colour picker away
+   mid-edit, which feels exactly like being tabbed out of it. */
+function menuHasFocus(){
+  return !!(menuEl && document.activeElement && menuEl.contains(document.activeElement));
+}
+window.addEventListener("resize", () => { if(!menuHasFocus()) closeMenu(); });
 window.addEventListener("scroll", e => {
-  // scrolling inside the popover itself shouldn't dismiss it
+  if(menuHasFocus()) return;
+  // scrolling inside the popover itself shouldn't dismiss it either
   if(menuEl && e.target instanceof Node && menuEl.contains(e.target)) return;
   closeMenu();
 }, true);
