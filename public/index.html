@@ -415,6 +415,7 @@
   }
   .next-row .n-tick.flat{color:var(--dim)}
   .next-row .n-tick.frozen{color:#60a5fa}
+  .next-row .n-tick.falling{color:var(--amber)}
   .next-row .n-slots{font-size:12px;color:var(--dim);flex:none;min-width:50px}
   .next-row .n-go{display:grid;place-items:center;color:var(--dim);line-height:0;flex:none;margin-left:2px}
   .next-row .n-go svg{width:14px;height:14px;display:block}
@@ -576,10 +577,19 @@
   .grid-empty{padding:26px 12px;text-align:center;font-size:12px;color:var(--dim)}
   .grid-empty[hidden]{display:none}
   @media(max-width:700px){
-    .filters{gap:8px}
-    .filter-row{gap:6px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
-    .fbtn{padding:8px 13px;flex:none}
-    .filter-count{margin-left:0}
+    /* the count moves to its own line so it stops eating the width the
+       buttons need, and the row scrolls with the same faded edges as the tabs */
+    .filters{gap:6px;flex-direction:column;align-items:stretch}
+    .filter-row{
+      gap:6px;overflow-x:auto;flex-wrap:nowrap;width:100%;
+      -webkit-overflow-scrolling:touch;scrollbar-width:none;
+      scroll-snap-type:x proximity;scroll-padding:8px;
+      -webkit-mask:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent);
+      mask:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent);
+    }
+    .filter-row::-webkit-scrollbar{display:none}
+    .fbtn{padding:8px 14px;flex:none;scroll-snap-align:center}
+    .filter-count{margin-left:0;align-self:flex-start}
   }
   html.has-bg .fbtn{background:rgba(10,17,25,calc(var(--glass) + .1))}
 
@@ -661,11 +671,29 @@
   .toast.warn{border-color:rgba(239,68,68,.7)}
   /* ---------------- music drawer ---------------- */
   .drawer{
-    position:fixed;right:14px;bottom:14px;z-index:100;width:min(410px,calc(100vw - 28px));
+    /* one width per size step; the player and the queue follow it. never wider
+       than the screen, so the big step still fits on a phone. */
+    --drawerW:410px;
+    position:fixed;right:14px;bottom:14px;z-index:100;
+    width:min(var(--drawerW),calc(100vw - 28px));
+    /* dvh, not vh: on a phone vh is the tallest the viewport ever gets, so the
+       box was being sized past the bottom of the screen whenever the address
+       bar was showing. dvh tracks what is actually visible. */
+    max-height:calc(100vh - 28px);
+    max-height:calc(100dvh - 28px);
+    display:flex;flex-direction:column;
     background:rgba(10,17,25,.97);backdrop-filter:blur(12px);
     border:1px solid rgba(34,211,238,.35);border-radius:14px;overflow:hidden;
     box-shadow:0 24px 60px rgba(0,0,0,.7);
   }
+  .drawer.size-s{--drawerW:330px}
+  .drawer.size-m{--drawerW:410px}
+  .drawer.size-l{--drawerW:760px}
+  /* at the big step the video is the point, so the rest gives way to it */
+  .drawer.size-l .now{min-height:0}
+  .drawer.size-l .queue{max-height:200px}
+  .drawer.size-s .now{min-height:220px}
+  .size-btn{font-size:10.5px;padding:5px 9px;min-width:56px}
   .drawer[hidden]{display:none}
   .drawer-head{
     display:flex;align-items:center;gap:8px;padding:10px 12px;
@@ -763,7 +791,11 @@
   .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
-  .yt-holder iframe{display:block;width:100%;height:215px;border:0}
+  /* 16:9 off the actual width, rather than a height that only suits one size */
+  .yt-holder iframe{display:block;width:100%;aspect-ratio:16/9;height:auto;border:0}
+  @supports not (aspect-ratio:16/9){
+    .yt-holder iframe{height:215px}
+  }
   /* let it read through the queue too, so the little box shows it as well */
   /* video wallpaper: a second, muted player sitting behind the whole page */
   .ytbg{position:fixed;inset:0;z-index:-4;pointer-events:none;overflow:hidden}
@@ -788,7 +820,7 @@
   .drawer-add input:focus{outline:none;border-color:var(--cyan)}
   .drawer-add button{font-size:11px;padding:6px 12px}
 
-  .queue{max-height:270px;overflow-y:auto;padding:8px}
+  .queue{flex:1;min-height:0;max-height:270px;overflow-y:auto;padding:8px}
   .queue::-webkit-scrollbar{width:7px}
   .queue::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:7px}
   .q-empty{padding:10px 6px;font-size:11.5px;color:var(--dim);text-align:center}
@@ -813,9 +845,9 @@
   .q-x svg{width:10px;height:10px;display:block}
   @media(max-width:700px){
     .drawer{right:8px;left:8px;bottom:8px;width:auto}
-    .yt-holder iframe{height:180px}
     .now{min-height:250px}
     .queue{max-height:200px}
+    .drawer.size-l .now{min-height:250px}
   }
 
   /* ---------------- mvp popup ---------------- */
@@ -1102,6 +1134,9 @@
   }
   .numin:focus{outline:none;border-color:rgba(34,211,238,.6)}
   .chkin{width:15px;height:15px;accent-color:var(--cyan);cursor:pointer}
+  /* a reading the board has aged for you, not one somebody confirmed */
+  .pct.fell{font-style:italic}
+
   .modal{
     position:fixed;inset:0;z-index:90;display:grid;place-items:center;
     background:rgba(2,6,11,.72);padding:20px;
@@ -1173,8 +1208,27 @@
     .logo{width:40px;height:40px;border-radius:11px}
     .logo svg{width:21px;height:21px}
 
-    .tabs{width:100%;overflow-x:auto;flex-wrap:nowrap;padding:5px;-webkit-overflow-scrolling:touch}
-    .tab{padding:8px 13px;flex:none}
+    /* one row that scrolls sideways, with the edges faded so it is obvious
+       there is more to reach. snap so a tab never stops half off screen. */
+    .tabs{
+      width:100%;overflow-x:auto;flex-wrap:nowrap;padding:5px;
+      -webkit-overflow-scrolling:touch;scrollbar-width:none;
+      scroll-snap-type:x proximity;scroll-padding:8px;
+      -webkit-mask:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 14px),transparent);
+      mask:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 14px),transparent);
+    }
+    .tabs::-webkit-scrollbar{display:none}
+    .tab{padding:8px 13px;flex:none;scroll-snap-align:center}
+
+    /* the player box stays put while the board scrolls under it, sits across
+       the full width, and clears the home bar on a phone */
+    .drawer{
+      right:8px;left:8px;width:auto;
+      bottom:calc(8px + env(safe-area-inset-bottom,0px));
+    }
+    .drawer.size-s,.drawer.size-m,.drawer.size-l{--drawerW:none}
+    .drawer .queue{max-height:150px}
+    .drawer-head{position:sticky;top:0;z-index:2;background:rgba(10,17,25,.97)}
     .ch{min-height:76px;border-radius:9px}
     .ch-head{padding:8px 9px 7px;gap:7px}
     .ch-name{font-size:11.5px;letter-spacing:.06em;white-space:nowrap}
@@ -1367,9 +1421,11 @@
             <span class="set-unit">% per active hour</span>
           </div>
           <div class="set-row proj-row">
-            <label for="projLoss">Leave penalty</label>
-            <input class="numin" id="projLoss" type="number" min="0" max="50" step="1" value="10">
-            <span class="set-unit">% when the last person leaves</span>
+            <label for="projDrop">Burning drop</label>
+            <input class="numin" id="projDrop" type="number" min="1" max="50" step="1" value="10">
+            <span class="set-unit">% every</span>
+            <input class="numin" id="projEvery" type="number" min="1" max="240" step="1" value="15">
+            <span class="set-unit">minutes people are sat on it</span>
           </div>
           <div class="set-row proj-row">
             <label for="projStart">Curfew</label>
@@ -1408,6 +1464,7 @@
       <button class="listeners" id="listenCount" title="Who has the music on right now">0 listening</button>
       <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
       <button class="ghost skip-btn" id="skipBtn" title="Skip to the next song">skip</button>
+      <button class="ghost size-btn" id="sizeBtn" title="Player size">size: M</button>
       <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
     </div>
 
@@ -2256,11 +2313,13 @@ helpBtn.onclick = () => openHelp();
 
 /* ---------------- projection rules ---------------- */
 const projGain  = document.getElementById("projGain");
-const projLoss  = document.getElementById("projLoss");
+const projDrop  = document.getElementById("projDrop");
+const projEvery = document.getElementById("projEvery");
 const projStart = document.getElementById("projStart");
 const projEnd   = document.getElementById("projEnd");
 const projSaved = document.getElementById("projSaved");
 const projSettle = document.getElementById("projSettle");
+
 
 function paintProj(){
   if(!projGain) return;
@@ -2268,7 +2327,8 @@ function paintProj(){
   const active = document.activeElement;
   const set = (el, v) => { if(el && el !== active) el.value = v; };
   set(projGain,  proj.gain);
-  set(projLoss,  proj.loss);
+  set(projDrop,  proj.drop);
+  set(projEvery, proj.dropEvery);
   set(projStart, proj.curfewStart);
   set(projEnd,   proj.curfewEnd);
   if(projSettle && projSettle !== active) projSettle.checked = !!proj.settle;
@@ -2284,21 +2344,22 @@ function sendProj(next){
 
 if(document.getElementById("projSave")){
   document.getElementById("projSave").onclick = () => sendProj({
-    gain: projGain.value, loss: projLoss.value,
+    gain: projGain.value, drop: projDrop.value, dropEvery: projEvery.value,
     curfewStart: projStart.value, curfewEnd: projEnd.value,
     settle: projSettle.checked
   });
 }
 if(document.getElementById("projReset")){
   document.getElementById("projReset").onclick = () =>
-    sendProj({ gain:10, loss:10, curfewStart:22, curfewEnd:8, settle:true });
+    sendProj({ gain:10, drop:10, dropEvery:15, curfewStart:22, curfewEnd:8, settle:true });
 }
 
 socket.on("proj", p => {
   if(!p || typeof p !== "object") return;
   proj = {
     gain:        Number(p.gain)        || 10,
-    loss:        Number(p.loss)        || 0,
+    drop:        Number(p.drop)        || 10,
+    dropEvery:   Number(p.dropEvery)   || 15,
     curfewStart: Number(p.curfewStart) || 0,
     curfewEnd:   Number(p.curfewEnd)   || 0,
     settle:      p.settle !== false
@@ -2512,7 +2573,7 @@ function renderTabs(){
       const b = document.createElement("button");
       b.className = "tab";
       b.textContent = r.id;
-      if(r.id === region) b.setAttribute("aria-current","page");
+      if(r.id === region){ b.setAttribute("aria-current","page"); b.classList.add("here"); }
       b.onclick = () => switchTo(r.id);
       tabs.appendChild(b);
     } else {
@@ -2521,6 +2582,15 @@ function renderTabs(){
       tabs.appendChild(sp);
     }
   });
+
+  // on a narrow screen the row scrolls sideways, so the board you are actually
+  // on can sit off the edge. bring it into view rather than leaving you to hunt.
+  const here = tabs.querySelector(".tab.here");
+  if(here && tabs.scrollWidth > tabs.clientWidth + 4){
+    const want = here.offsetLeft - (tabs.clientWidth - here.offsetWidth) / 2;
+    const max = tabs.scrollWidth - tabs.clientWidth;
+    tabs.scrollLeft = Math.max(0, Math.min(max, want));
+  }
 }
 
 function openTabMenu(anchor){
@@ -2729,11 +2799,12 @@ function flush(){ if(pending){ board = pending.channels; log = pending.log; pend
    ------------------------------------------------------------------ */
 /* The rules live on the server so everyone projects the same numbers. These
    are the fallbacks until the first "proj" message lands. */
-let proj = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8, settle: true };
+let proj = { gain: 10, drop: 10, dropEvery: 15, curfewStart: 22, curfewEnd: 8, settle: true };
 const CURFEW_START = () => proj.curfewStart;   // UTC hour the climb stops
 const CURFEW_END   = () => proj.curfewEnd;     // UTC hour it starts again
-const LEAVE_LOSS   = () => proj.loss;          // % knocked off as the last person walks
 const HOURLY_GAIN  = () => proj.gain;          // % gained per active hour while empty
+const DROP_PCT     = () => proj.drop;          // % lost each time it falls while sat on
+const DROP_EVERY   = () => proj.dropEvery;     // minutes between those falls
 
 const hh = n => String(n).padStart(2, "0") + ":00";
 const curfewLabel = () => "Curfew " + hh(CURFEW_START()) + "–" + hh(CURFEW_END()) + " UTC";
@@ -2781,6 +2852,10 @@ function whenActiveReached(start, neededMs){
 function nextTick(c){
   const proj = projectedPct(c);
   if(proj === null) return null;
+  // a drop is still owed before any climbing starts
+  if(c.pendingAt && Date.now() < c.pendingAt){
+    return { at: c.pendingAt, in: c.pendingAt - Date.now(), falling: true };
+  }
   if(proj >= 100) return { max:true };
   const anchor = anchorOf(c);
   if(!anchor) return null;
@@ -2806,14 +2881,55 @@ function anchorOf(c){
   return a || null;
 }
 
+/* What an occupied channel is really at.
+   Burning falls while people are on it, so a reading taken forty minutes ago is
+   two drops stale. Counted from whichever is later — the last reading someone
+   confirmed, or the moment the sitting began. Null when there is nothing to say
+   yet, so the card shows the confirmed number until the first drop lands. */
+function decayedPct(c){
+  const d = dropsOwed(c);
+  return d && d.owed > 0
+    ? Math.max(0, Math.min(100, c.pct - DROP_PCT() * d.owed))
+    : null;
+}
+
+// when the next drop lands on a channel people are sat on
+function nextDrop(c){
+  const d = dropsOwed(c);
+  if(!d) return null;
+  const at = whenActiveReached(Date.now(), d.wait);
+  return at ? { at, in: at - Date.now() } : null;
+}
+
+/* How many drops have landed that nobody wrote down, and how long until the
+   next one. The falling clock starts on the first kill and runs on its own —
+   a reading records the value at a moment, it does not restart the cycle. */
+function dropsOwed(c){
+  if(!c || !c.entries.length) return null;
+  const cycle = c.occupiedAt || c.pctAt || 0;
+  if(!cycle) return null;
+  const every = DROP_EVERY() * 60000;
+  const sinceStart = activeMsBetween(cycle, Date.now());
+  const landed = Math.floor(sinceStart / every);
+  const readAt = Math.max(c.pctAt || 0, cycle);
+  const atRead = Math.floor(activeMsBetween(cycle, readAt) / every);
+  return { owed: Math.max(0, landed - atRead),
+           wait: (landed + 1) * every - sinceStart };
+}
+
 // what a channel is probably sitting at right now
 function projectedPct(c){
   if(!c || c.entries.length) return null;          // someone's on it, they can see the real number
 
   const anchor = anchorOf(c);
   if(!anchor) return null;                         // nothing to measure from
-  const left = c.emptiedAt || 0, set = c.pctAt || 0;
-  const start = (left >= set) ? c.pct - LEAVE_LOSS() : c.pct;  // leave penalty, if that's the anchor
+  // a drop was still in flight when the channel cleared. it lands whether or
+  // not anyone is standing there, so it is held until its moment rather than
+  // taken up front — the board should not read 10 low for those few minutes
+  const pend = (c.pendingAt && Date.now() >= c.pendingAt) ? DROP_PCT() : 0;
+  // every drop nobody wrote down is already in c.pct; only the one still in
+  // flight is applied here, and only once its moment has passed
+  const start = c.pct - pend;
   // it steps up on the hour, it doesn't creep — 80% holds at 80% until the tick
   const hours = Math.floor(activeMsBetween(anchor, Date.now()) / 3600000);
   return Math.max(0, Math.min(100, start + HOURLY_GAIN() * hours));
@@ -3058,6 +3174,11 @@ function openNextMenu(anchor, fromIdx){
         tick.textContent = "Max";
         tick.classList.add("flat");
         tick.title = "already projected at 100%";
+      } else if(t.falling){
+        tick.textContent = "−" + DROP_PCT() + "% " + until(t.in);
+        tick.classList.add("falling");
+        tick.title = "a drop was still in flight when everyone left — it lands in "
+          + until(t.in) + ", and the climb starts then";
       } else if(t.frozen){
         tick.textContent = "Frozen";
         tick.classList.add("frozen");
@@ -3724,9 +3845,22 @@ function card(c,i){
   head.appendChild(nm);
 
   const p = document.createElement("button");
-  p.className = "pct"; p.textContent = c.pct + "%"; p.title = "Set burning %";
-  const col = pctColor(c.pct);
+  const fell = decayedPct(c);
+  const show = fell === null ? c.pct : fell;
+  p.className = "pct" + (fell === null ? "" : " fell");
+  p.textContent = show + "%";
+  if(fell === null){
+    const nd = nextDrop(c);
+    p.title = "Set burning %"
+      + (nd ? " — first drop in " + until(nd.in) : "");
+  } else {
+    const nd = nextDrop(c);
+    p.title = "Last confirmed " + c.pct + "%, down to " + fell + "% from sitting on it"
+      + (nd ? ", next drop in " + until(nd.in) : "") + ". Click to set it.";
+  }
+  const col = pctColor(show);
   p.style.color = col; p.style.background = col+"20"; p.style.borderColor = col+"55";
+  if(fell !== null) p.style.borderStyle = "dashed";
   p.onclick = e => { e.stopPropagation(); openPctMenu(p, i) };
   head.appendChild(p);
 
@@ -4585,6 +4719,34 @@ function paintListen(){
   if(typeof paintWall === "function") paintWall();
   if(typeof paintArt === "function") paintArt();
 }
+
+/* Player size. The box is the same one the music queue has always shown — this
+   just steps its width, and the video follows at 16:9. Kept per browser, since
+   it is a preference about your screen, not something the board shares. */
+const DRAWER_SIZES = ["s", "m", "l"];
+const DRAWER_LABEL = { s:"size: S", m:"size: M", l:"size: L" };
+let drawerSize = "m";
+try {
+  const saved = localStorage.getItem("ct:drawersize");
+  if(DRAWER_SIZES.indexOf(saved) !== -1) drawerSize = saved;
+} catch(e){}
+
+function paintDrawerSize(){
+  const d = document.getElementById("drawer");
+  const b = document.getElementById("sizeBtn");
+  if(!d || !b) return;
+  DRAWER_SIZES.forEach(k => d.classList.toggle("size-" + k, k === drawerSize));
+  b.textContent = DRAWER_LABEL[drawerSize];
+  b.title = "Player size — click for "
+    + DRAWER_LABEL[DRAWER_SIZES[(DRAWER_SIZES.indexOf(drawerSize) + 1) % DRAWER_SIZES.length]]
+      .replace("size: ", "");
+}
+document.getElementById("sizeBtn").onclick = () => {
+  drawerSize = DRAWER_SIZES[(DRAWER_SIZES.indexOf(drawerSize) + 1) % DRAWER_SIZES.length];
+  try { localStorage.setItem("ct:drawersize", drawerSize) } catch(e){}
+  paintDrawerSize();
+};
+paintDrawerSize();
 
 document.getElementById("skipBtn").onclick = () => {
   musicAction({ type:"music-skip" });   // server checks if there's anything to skip

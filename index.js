@@ -18,9 +18,9 @@ const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 const REGIONS = [
   { id: "B1",   area: "B1",  enabled: true },
   { id: "RD1",  area: "RD",  enabled: true },
-  { id: "RD2",  area: "RD",  enabled: true },
-  { id: "RD3",  area: "RD",  enabled: true },
   { id: "RD4",  area: "RD",  enabled: true },
+  { id: "RD6",  area: "RD",  enabled: true },
+  { id: "RD7",  area: "RD",  enabled: true },
   { id: "GOB1", area: "GOB", enabled: true },
   { id: "GOB5", area: "GOB", enabled: true },
   { id: "GOB7", area: "GOB", enabled: true },
@@ -43,7 +43,7 @@ const byId = id => REGIONS.find(r => r.id === id);
 
 /* ---------------- state ---------------- */
 const blankRegion = () => ({
-  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, emptiedAt: null, entries: [] })),
+  channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, emptiedAt: null, occupiedAt: null, pendingAt: null, entries: [] })),
   log: []
 });
 
@@ -98,7 +98,7 @@ function hydrate(saved) {
   // How burning is projected. These are game rules, not preferences, so they
   // live on the server and everyone reads the same numbers — otherwise two
   // people looking at the same channel would see different predictions.
-  const dp = { gain: 10, loss: 10, curfewStart: 22, curfewEnd: 8 };
+  const dp = { gain: 10, curfewStart: 22, curfewEnd: 8, drop: 10, dropEvery: 15 };
   if (!state.proj || typeof state.proj !== "object") state.proj = {};
   const whole = (v, d, lo, hi) => {
     const n = Math.round(Number(v));
@@ -106,12 +106,30 @@ function hydrate(saved) {
   };
   state.proj = {
     gain:        whole(state.proj.gain,        dp.gain,        1, 50),
-    loss:        whole(state.proj.loss,        dp.loss,        0, 50),
+    // burning falls this much every this many minutes while people are on it
+    drop:        whole(state.proj.drop,        dp.drop,        1, 50),
+    dropEvery:   whole(state.proj.dropEvery,   dp.dropEvery,   1, 240),
     curfewStart: whole(state.proj.curfewStart, dp.curfewStart, 0, 23),
     curfewEnd:   whole(state.proj.curfewEnd,   dp.curfewEnd,   0, 23),
     // write the projection in as the real reading when someone arrives
     settle:      state.proj.settle !== false
   };
+
+  // A channel needs to know when its current sitting began, to count the drops.
+  // Boards saved before this existed have no such field, so take the earliest
+  // person on the channel as the start rather than pretending it just began.
+  REGIONS.forEach(r => {
+    const b = state[r.id] && state[r.id].channels;
+    if (!b) return;
+    b.forEach(c => {
+      if (typeof c.pendingAt !== "number") c.pendingAt = null;
+      if (!c.entries.length) { c.occupiedAt = null; return; }
+      c.pendingAt = null;
+      if (typeof c.occupiedAt !== "number" || !c.occupiedAt) {
+        c.occupiedAt = Math.min.apply(null, c.entries.map(e => e.at || Date.now()));
+      }
+    });
+  });
 
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
@@ -272,7 +290,14 @@ function projectedFor(c) {
   const left = c.emptiedAt || 0, set = c.pctAt || 0;
   const anchor = Math.max(left, set);
   if (!anchor) return null;
-  const start = (left >= set) ? c.pct - state.proj.loss : c.pct;
+  // A drop was still in flight when the channel cleared. It lands whether or
+  // not anyone is standing there, so it is held until its moment rather than
+  // taken up front — the board should not read 10 low for those few minutes.
+  const pend = (c.pendingAt && Date.now() >= c.pendingAt) ? state.proj.drop : 0;
+  // Every drop, including the one that landed after the last person left, is
+  // already written into c.pct by the emptying code. Nothing more comes off
+  // here, or the same fall would be counted twice.
+  const start = c.pct - pend;
   // it steps up on the hour, it doesn't creep — 80% holds at 80% until the tick
   const hours = Math.floor(projActiveMs(anchor, Date.now()) / 3600000);
   return Math.max(0, Math.min(100, start + state.proj.gain * hours));
@@ -405,6 +430,8 @@ io.on("connection", socket => {
         const same = target.pct === v;
         target.pct = v;
         target.pctAt = Date.now();
+        // a reading someone actually took supersedes any drop we were holding
+        target.pendingAt = null;
         note(region, same
           ? `${ch(at)} still ${v}% — confirmed by ${by}`
           : `${ch(at)} burning set to ${v}% by ${by}`);
@@ -504,6 +531,11 @@ io.on("connection", socket => {
         if (!isFinite(mins)) return;
         const base = Date.now() - mins * 60000;
         target.entries.forEach(e => { e.at = base; });     // one clock for the whole channel
+        // the drop count is measured from the same moment, so correcting how
+        // long the channel has been going has to move that anchor too — else
+        // the timer says 40m while the burning has only fallen for two
+        target.occupiedAt = base;
+        target.pctAt = Math.min(target.pctAt || base, base);
         note(region, `${ch(at)} set to ${mins}m by ${by}`);
         break;
       }
@@ -715,7 +747,8 @@ io.on("connection", socket => {
         };
         const next = {
           gain:        num(a.gain,        p.gain,        1, 50),
-          loss:        num(a.loss,        p.loss,        0, 50),
+          drop:        num(a.drop,        p.drop,        1, 50),
+          dropEvery:   num(a.dropEvery,   p.dropEvery,   1, 240),
           curfewStart: num(a.curfewStart, p.curfewStart, 0, 23),
           curfewEnd:   num(a.curfewEnd,   p.curfewEnd,   0, 23),
           settle:      a.settle === undefined ? p.settle : !!a.settle
@@ -723,7 +756,7 @@ io.on("connection", socket => {
         if (JSON.stringify(next) === JSON.stringify(p)) return;
         state.proj = next;
         note(region, `projection rules changed by ${by}`
-          + ` — +${next.gain}%/h, −${next.loss}% on leaving, curfew `
+          + ` — +${next.gain}%/h up, −${next.drop}% every ${next.dropEvery}m sat on, curfew `
           + String(next.curfewStart).padStart(2, "0") + ":00–"
           + String(next.curfewEnd).padStart(2, "0") + ":00 UTC, "
           + (next.settle ? "confirm on arrival" : "no confirm on arrival"));
@@ -826,14 +859,61 @@ io.on("connection", socket => {
         note(region, `${ch(i)} burning ${c.pct}% → ${p}% — projection confirmed on arrival`);
         c.pct = p;
         c.pctAt = Date.now();
+        c.pendingAt = null;      // it is folded into the number now
       });
     }
 
-    // a channel only decays once it has been farmed and then abandoned
+    /* Burning falls while a channel is being farmed — one drop every
+       `dropEvery` minutes of sitting on it. Nobody wants to keep typing that
+       in, so the board does the sum itself the moment the last person leaves.
+
+       The part that is easy to get wrong is the drop already in flight. A
+       sitting of 42 minutes with drops every 15 saw two of them, at 15 and 30,
+       and a third is due at 45 — three minutes after everyone walked off. That
+       one still lands, because the cycle does not care whether anyone is
+       standing there. So the reading written down is the value after that
+       third drop, and the climb back up is held until the moment it falls.
+       Leave at 16 minutes and it is one seen plus one in flight: −20%. */
     board.forEach((c, i) => {
-      const now = c.entries.length;
-      if (before[i] > 0 && now === 0) c.emptiedAt = Date.now();
-      else if (now > 0) c.emptiedAt = null;
+      const nowN = c.entries.length;
+      const t = Date.now();
+
+      if (before[i] > 0 && nowN === 0) {
+        /* The falling clock starts on the first kill and runs on its own from
+           there — writing a reading down tells us the value at that moment, it
+           does not restart the cycle. So the drops owed are simply the ones
+           that landed since whenever somebody last wrote a number down, and the
+           next one is due on the cycle's own schedule, not fifteen minutes
+           after the last reading. */
+        const cycle = c.occupiedAt || c.pctAt || 0;
+        if (cycle) {
+          const every = state.proj.dropEvery * 60000;
+          const sinceStart = projActiveMs(cycle, t);
+          const landed = Math.floor(sinceStart / every);          // since the first kill
+          const readAt = Math.max(c.pctAt || 0, cycle);           // never before it began
+          const atRead = Math.floor(projActiveMs(cycle, readAt) / every);
+          const owed = Math.max(0, landed - atRead);              // the ones nobody logged
+          const wait = (landed + 1) * every - sinceStart;         // until the next falls
+          const was = c.pct;
+          const next = Math.max(0, Math.min(100, was - state.proj.drop * owed));
+          if (next !== was) {
+            note(region, `${ch(i)} burning ${was}% → ${next}% — `
+              + `${owed} drop${owed === 1 ? "" : "s"} nobody wrote down`);
+          }
+          c.pct = next;
+          c.pctAt = t;
+          c.pendingAt = t + wait;      // the drop still to come
+          c.emptiedAt = c.pendingAt;   // and the climb starts when it does
+        } else {
+          c.emptiedAt = t;
+          c.pendingAt = null;
+        }
+        c.occupiedAt = null;
+      } else if (nowN > 0) {
+        c.emptiedAt = null;
+        c.pendingAt = null;            // somebody is on it again
+        if (!c.occupiedAt) c.occupiedAt = t;
+      }
     });
 
     persist();
