@@ -286,6 +286,38 @@
   .colgrid button:hover{transform:scale(1.12)}
   .colgrid button.on{box-shadow:0 0 0 2px #fff inset}
   .col-h2{margin-top:11px !important}
+  .harmony{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+  .hbtn.on{border-color:var(--cyan);background:rgba(34,211,238,.14)}
+  .hbtn.on .hlab{color:var(--cyan)}
+  .spreadrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .spreadrow.idle{opacity:.45}
+  .spreadlab{font-size:8.5px;letter-spacing:.08em;color:var(--dim);flex:1;min-width:0}
+  .spread{width:104px;flex:none;accent-color:var(--cyan);cursor:pointer}
+  .col-previewbox{
+    margin-top:11px;padding:8px;border-radius:8px;
+    background:#04121a;border:1px solid var(--line);
+  }
+  .col-hexes{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+  .phex{
+    display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+    padding:2px 6px 2px 4px;border-radius:5px;
+    font-size:9.5px;letter-spacing:.02em;color:var(--dim);
+    background:var(--raise);border:1px solid var(--line);
+  }
+  .phex:hover{color:var(--text);border-color:#2d3f52}
+  .phexdot{width:8px;height:8px;border-radius:2px;flex:none}
+  .col-apply{width:100%;margin-top:9px;font-size:11px;padding:7px 9px}
+  .col-apply:disabled{opacity:.45;cursor:default}
+  .hbtn{
+    display:flex;flex-direction:column;align-items:stretch;gap:4px;
+    padding:5px 3px 6px;border-radius:7px;cursor:pointer;font:inherit;
+    background:var(--raise);border:1px solid var(--line);
+  }
+  .hbtn:hover{border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.08)}
+  .hsw{display:flex;height:11px;border-radius:3px;overflow:hidden}
+  .hsw span{flex:1}
+  .hlab{font-size:7.5px;letter-spacing:.04em;color:var(--dim);text-align:center}
+  .hbtn:hover .hlab{color:var(--text)}
   .col-none{
     display:grid;place-items:center;font:inherit;font-size:13px;line-height:1;
     color:var(--dim);background:var(--raise) !important;
@@ -293,9 +325,8 @@
   .col-none:hover{color:var(--text)}
   /* their name as it will actually look */
   .col-preview{
-    margin-top:10px;padding:6px 8px;border-radius:7px;text-align:center;
-    font-family:var(--name-face);font-weight:700;font-size:13px;
-    background:#04121a;border:1px solid var(--line);
+    text-align:center;
+    font-family:var(--name-face);font-weight:700;font-size:14px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   .colcustom{display:flex;align-items:center;gap:6px;margin-top:9px}
@@ -1617,6 +1648,47 @@ function setAuraTiming(el, seed){
   el.style.setProperty("--d1", at(AURA_EDGE));
   el.style.setProperty("--d2", at(AURA_BREATH));
   el.style.setProperty("--d3", at(AURA_SHEEN));
+}
+
+/* ---------------- colour harmonies ----------------
+   Picking three colours that sit well together by hand is fiddly, so these do
+   it from the first one. They are the standard relationships: contrast is the
+   same hue pushed light and dark, complement is the opposite side of the
+   wheel, analogous is the two neighbours, triad and split are even spreads
+   around it. Each returns the full set of slots, first colour included. */
+const HARMONIES = [
+  { id:"contrast",   name:"Contrast",   hint:"the same hue pushed light and dark",
+    spread:"how far apart the light and dark go" },
+  { id:"complement", name:"Complement", hint:"the opposite side of the wheel",
+    spread:"how far round towards the opposite" },
+  { id:"analogous",  name:"Analogous",  hint:"its two neighbours on the wheel",
+    spread:"how far either side" },
+  { id:"triad",      name:"Triad",      hint:"three evenly spaced hues",
+    spread:"how wide the spacing" },
+  { id:"split",      name:"Split",      hint:"the two either side of its opposite",
+    spread:"how far either side of the opposite" }
+];
+
+/* t runs 0 to 1 and widens whatever the scheme is doing — the hue gap for the
+   wheel ones, the light-to-dark distance for contrast. */
+function harmonyOf(base, id, t){
+  const amt = Math.max(0, Math.min(1, t === undefined ? .5 : t));
+  const { h, s, l } = hexHSL(base);
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // keep the derived colours vivid and light enough to still read as a name
+  const at = (dh, ms, ml) => hslHex(h + dh,
+    clamp(s * (ms === undefined ? 1 : ms), .22, 1),
+    clamp(l * (ml === undefined ? 1 : ml), .30, .82));
+  const mix = (lo, hi) => lo + (hi - lo) * amt;
+  switch(id){
+    case "contrast":   return [base, at(0, .85, mix(1.18, 1.85)),
+                                     at(0, 1.1, mix(.80, .48))];
+    case "complement": return [base, at(mix(140, 180))];
+    case "analogous":  return [base, at(mix(12, 60)), at(-mix(12, 60))];
+    case "triad":      return [base, at(mix(96, 140)), at(-mix(96, 140))];
+    case "split":      return [base, at(mix(135, 175)), at(-mix(135, 175))];
+  }
+  return [base];
 }
 
 // the same colours as hard bands, for the little round swatch
@@ -3226,12 +3298,142 @@ function openColorMenu(anchor, person){
       v => { const c = parseHex(v); if(c) setSlot(i, c); }));
   });
 
-  if(person.color){
-    const prev = document.createElement("div");
-    prev.className = "col-preview";
-    prev.textContent = person.name;
-    inkText(prev, person.color, person.color2, person.color3);
-    m.appendChild(prev);
+  /* Fill the other two slots from the first. Nothing here commits on its own:
+     pick a relationship, drag the spread, watch the preview at the bottom, and
+     press apply when it looks right. */
+  let scheme = null;                      // null = show what they already have
+  let spread = .5;
+  try { spread = Math.min(1, Math.max(0, parseFloat(localStorage.getItem("ct:spread")))) } catch(e){}
+  if(!isFinite(spread)) spread = .5;
+
+  const candidate = () =>
+    (scheme && cur[0]) ? harmonyOf(cur[0], scheme, spread) : cur.filter(Boolean);
+
+  let hBtns = [], slider = null, spreadRow = null, applyBtn = null;
+  let prevName = null, prevHex = null;
+
+  function paintPreview(){
+    const set = candidate();
+    if(prevName){
+      prevName.textContent = person.name;
+      inkText(prevName, set[0], set[1], set[2]);
+    }
+    if(prevHex){
+      prevHex.innerHTML = "";
+      set.forEach(c => {
+        const chip = document.createElement("span");
+        chip.className = "phex";
+        const dot = document.createElement("span");
+        dot.className = "phexdot";
+        dot.style.background = c;
+        const txt = document.createElement("span");
+        txt.textContent = c;
+        chip.append(dot, txt);
+        chip.title = "Click to copy " + c;
+        chip.onclick = () => {
+          try { navigator.clipboard && navigator.clipboard.writeText(c) } catch(e){}
+        };
+        prevHex.appendChild(chip);
+      });
+    }
+    hBtns.forEach(b => b.el.classList.toggle("on", b.id === scheme));
+    if(spreadRow) spreadRow.classList.toggle("idle", !scheme);
+    if(applyBtn){
+      applyBtn.disabled = !scheme;
+      applyBtn.textContent = scheme ? "apply these three" : "pick one above";
+    }
+  }
+
+  if(cur[0]){
+    const hHead = document.createElement("h4");
+    hHead.className = "col-h2";
+    hHead.textContent = "FILL FROM THE FIRST";
+    m.appendChild(hHead);
+
+    const hrow = document.createElement("div");
+    hrow.className = "harmony";
+    HARMONIES.forEach(sc => {
+      const b = document.createElement("button");
+      b.className = "hbtn";
+      b.title = sc.name + " — " + sc.hint;
+
+      const sw = document.createElement("span");
+      sw.className = "hsw";
+      const bars = [0,1,2].map(() => {
+        const bar = document.createElement("span");
+        sw.appendChild(bar);
+        return bar;
+      });
+
+      const lab = document.createElement("span");
+      lab.className = "hlab";
+      lab.textContent = sc.name;
+
+      b.append(sw, lab);
+      b.onclick = () => { scheme = (scheme === sc.id) ? null : sc.id; repaintSwatches(); };
+      hrow.appendChild(b);
+      hBtns.push({ id: sc.id, el: b, bars: bars });
+    });
+    m.appendChild(hrow);
+
+    // the spread slider
+    spreadRow = document.createElement("div");
+    spreadRow.className = "spreadrow";
+    slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0"; slider.max = "100"; slider.step = "1";
+    slider.value = String(Math.round(spread * 100));
+    slider.className = "spread";
+    slider.setAttribute("aria-label", "Spread");
+    const sLab = document.createElement("span");
+    sLab.className = "spreadlab";
+    slider.oninput = () => {
+      spread = (parseInt(slider.value, 10) || 0) / 100;
+      try { localStorage.setItem("ct:spread", String(spread)) } catch(e){}
+      repaintSwatches();
+    };
+    spreadRow.append(sLab, slider);
+    m.appendChild(spreadRow);
+
+    // redraw the little previews on each button as the slider moves
+    var repaintSwatches = function(){
+      hBtns.forEach(b => {
+        const set = harmonyOf(cur[0], b.id, spread);
+        b.bars.forEach((bar, i) => {
+          bar.style.background = set[i] || "transparent";
+          bar.style.display = set[i] ? "" : "none";
+        });
+      });
+      const sc = HARMONIES.find(x => x.id === scheme);
+      sLab.textContent = sc ? sc.spread : "spread";
+      paintPreview();
+    };
+  }
+
+  // the preview: what it will look like, and the codes, before anything is sent
+  const prev = document.createElement("div");
+  prev.className = "col-previewbox";
+  prevName = document.createElement("div");
+  prevName.className = "col-preview";
+  prevHex = document.createElement("div");
+  prevHex.className = "col-hexes";
+  prev.append(prevName, prevHex);
+  m.appendChild(prev);
+
+  if(cur[0]){
+    applyBtn = document.createElement("button");
+    applyBtn.className = "ghost col-apply";
+    applyBtn.onclick = () => {
+      const set = candidate();
+      if(!scheme || !set.length) return;
+      closeMenu();
+      send({ type:"person-color", id:person.id,
+             color: set[0] || "", color2: set[1] || "", color3: set[2] || "" });
+    };
+    m.appendChild(applyBtn);
+    repaintSwatches();
+  } else {
+    paintPreview();
   }
 
   document.body.appendChild(m);
