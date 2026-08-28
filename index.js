@@ -512,7 +512,11 @@ io.on("connection", socket => {
         const p = findPerson(a.id, area);
         const col = clean(a.color, 12);
         if (!p || !/^#[0-9a-fA-F]{6}$/.test(col)) return;
+        // an optional second colour: the name and its glow blend between the
+        // two. anything that isn't a hex clears it back to a single colour.
+        const col2 = clean(a.color2, 12);
         p.color = col;
+        p.color2 = /^#[0-9a-fA-F]{6}$/.test(col2) && col2 !== col ? col2 : null;
         persist();
         broadcastRoster();
         return;
@@ -742,7 +746,7 @@ io.on("connection", socket => {
         if (list.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
         if (list.length >= 200) return;
         // whoever adds a name owns it straight away
-        list.push({ id: uid(), name, color: null, claimedBy: token, claimedName: by });
+        list.push({ id: uid(), name, color: null, color2: null, claimedBy: token, claimedName: by });
         list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();

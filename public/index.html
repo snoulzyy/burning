@@ -276,6 +276,19 @@
   }
   .colgrid button:hover{transform:scale(1.12)}
   .colgrid button.on{box-shadow:0 0 0 2px #fff inset}
+  .col-h2{margin-top:11px !important}
+  .col-none{
+    display:grid;place-items:center;font:inherit;font-size:13px;line-height:1;
+    color:var(--dim);background:var(--raise) !important;
+  }
+  .col-none:hover{color:var(--text)}
+  /* their name as it will actually look */
+  .col-preview{
+    margin-top:10px;padding:6px 8px;border-radius:7px;text-align:center;
+    font-family:var(--name-face);font-weight:700;font-size:13px;
+    background:#04121a;border:1px solid var(--line);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
   .colcustom{display:flex;align-items:center;gap:6px;margin-top:9px}
   .colcustom input[type=color]{
     width:34px;height:28px;padding:0;cursor:pointer;background:none;
@@ -876,6 +889,33 @@
     font-family:var(--name-face);font-weight:600;font-size:12.5px;letter-spacing:.005em;cursor:grab}
   .clock{font-size:10.5px;font-weight:600;color:var(--amber);cursor:pointer}
   .clock.stale{color:var(--red)}
+
+  /* ---------- the long-haul badges ---------- */
+  .grindtag{
+    flex:none;font-size:8px;font-weight:800;letter-spacing:.12em;
+    padding:2px 5px;border-radius:4px;white-space:nowrap;
+    border:1px solid currentColor;
+  }
+  .row.g1 .grindtag{color:#eab308;background:rgba(234,179,8,.10)}
+  .row.g2 .grindtag{color:#f97316;background:rgba(249,115,22,.12)}
+  .row.g3 .grindtag{color:#f87171;background:rgba(248,113,113,.14)}
+  /* the longer they sit, the harder the row argues with you about it */
+  .row.g1{box-shadow:inset 2px 0 0 rgba(234,179,8,.7)}
+  .row.g2{box-shadow:inset 2px 0 0 rgba(249,115,22,.85), 0 0 12px -6px rgba(249,115,22,.9)}
+  .row.g3{
+    box-shadow:inset 2px 0 0 #f87171, 0 0 14px -5px rgba(248,113,113,.95);
+    animation:nolife 2.4s ease-in-out infinite;
+  }
+  .row.g3 .who{animation:nolife 2.4s ease-in-out infinite}
+  @keyframes nolife{
+    0%,100%{filter:none}
+    50%{filter:brightness(1.22) saturate(1.15)}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .row.g3, .row.g3 .who{animation:none}
+  }
+  /* the sidebar says it too, quietly */
+  .chip.g3 .nm{text-decoration:underline wavy rgba(248,113,113,.6) 1px}
   .row input,.newrow input{
     font-family:var(--name-face);font-weight:600;font-size:13.5px;
     color:var(--text);background:#04121a;
@@ -1391,6 +1431,7 @@ try {
 const PALETTE = ["#22d3ee","#2dd4bf","#22c55e","#a3e635","#eab308","#f59e0b",
                  "#f97316","#ef4444","#f472b6","#a855f7","#60a5fa","#dbe7f2"];
 let colorOf = {};       // pid -> colour, rebuilt whenever the roster arrives
+let color2Of = {};      // pid -> second colour, for the ones who blend two
 
 let colorByName = {};   // lowercase name -> colour, for chat lines
 
@@ -1457,13 +1498,47 @@ function rgba(hex, a){
 }
 function recomputeColors(){
   colorOf = {};
+  color2Of = {};
   colorByName = {};
   Object.keys(rosters).forEach(area =>
     (rosters[area] || []).forEach(p => {
       if(!p.color) return;
       colorOf[p.id] = p.color;
+      if(p.color2) color2Of[p.id] = p.color2;
       colorByName[p.name.trim().toLowerCase()] = p.color;
     }));
+}
+
+/* ---------------- two-colour names ----------------
+   A person can carry a second colour. Everything of theirs then runs between
+   the two: the name, the dot, and the glow around their row. One colour and
+   nothing changes — the aura still spreads its own shades from that one. */
+function blendHex(a, b, t){
+  const x = hexRGB(a), y = hexRGB(b);
+  if(!x || !y) return a;
+  const m = (p, q) => Math.round(p + (q - p) * t);
+  return "#" + [m(x.r,y.r), m(x.g,y.g), m(x.b,y.b)]
+    .map(v => v.toString(16).padStart(2,"0")).join("");
+}
+
+// the three stops the aura animates through
+function auraPair(c1, c2){
+  return c2 ? [c1, blendHex(c1, c2, .5), c2] : auraRamp(c1);
+}
+
+// paint text in one colour, or as a gradient between two
+function inkText(el, c1, c2){
+  if(!c1) return;
+  if(!c2){
+    el.style.color = glowInk(c1);
+    return;
+  }
+  const g = "linear-gradient(100deg," + glowInk(c1) + "," + glowInk(c2) + ")";
+  el.style.backgroundImage = g;
+  el.style.webkitBackgroundClip = "text";
+  el.style.backgroundClip = "text";
+  el.style.color = "transparent";
+  el.style.webkitTextFillColor = "transparent";
 }
 
 let myClaimNames = new Set();
@@ -1654,6 +1729,38 @@ function ago(at){
   const h = Math.floor(m/60);
   return h < 24 ? h + "h ago" : Math.floor(h/24) + "d ago";
 }
+/* ---------------- how long they have been sat there ----------------
+   The clock already turns red at 90 minutes. Past that it escalates, because
+   a channel someone has been welded to for eight hours is worth pointing at.
+   Purely cosmetic — nothing here changes what the board does. */
+const GRIND = [
+  { mins: 180, cls:"g1", label:"3H DEEP",  note:"three hours on the same channel" },
+  { mins: 300, cls:"g2", label:"5H DEEP",  note:"five hours. go outside." },
+  { mins: 480, cls:"g3", label:"NO LIFE",  note:"eight hours straight. seek help." }
+];
+function grindTier(at){
+  const mins = (Date.now() - at) / 60000;
+  let t = -1;
+  GRIND.forEach((g, i) => { if(mins >= g.mins) t = i; });
+  return t;                       // -1 = nothing to say yet
+}
+// keeps a row's badge and classes in step without redrawing the whole board
+function paintGrind(r, at){
+  const t = grindTier(at);
+  GRIND.forEach((g, i) => r.classList.toggle(g.cls, i === t));
+  r.classList.toggle("grinding", t >= 0);
+  let tag = r.querySelector(".grindtag");
+  if(t < 0){ if(tag) tag.remove(); return; }
+  if(!tag){
+    tag = document.createElement("span");
+    tag.className = "grindtag";
+    const clock = r.querySelector(".clock");
+    if(clock) r.insertBefore(tag, clock); else r.appendChild(tag);
+  }
+  tag.textContent = GRIND[t].label;
+  tag.title = GRIND[t].note;
+}
+
 function elapsed(at){
   const m = Math.max(0, Math.floor((Date.now()-at)/60000));
   return m<60 ? m+"m" : Math.floor(m/60)+"h"+String(m%60).padStart(2,"0")+"m";
@@ -2958,6 +3065,12 @@ function openColorMenu(anchor, person){
   m.className = "colmenu";
   m.onclick = e => e.stopPropagation();
 
+  // whatever is picked, the other half of the pair rides along unchanged
+  const push = (c1, c2) => {
+    closeMenu();
+    send({ type:"person-color", id:person.id, color:c1, color2: c2 || "" });
+  };
+
   const h = document.createElement("h4");
   h.textContent = "COLOUR";
   m.appendChild(h);
@@ -2969,10 +3082,47 @@ function openColorMenu(anchor, person){
     b.style.background = col;
     b.title = col;
     if(person.color === col) b.classList.add("on");
-    b.onclick = () => { closeMenu(); send({ type:"person-color", id:person.id, color:col }); };
+    b.onclick = () => push(col, person.color2);
     g.appendChild(b);
   });
   m.appendChild(g);
+
+  /* Second colour. Their name, dot and glow then run between the two rather
+     than sitting on one. Picking one before a base colour just sets the base. */
+  const h2 = document.createElement("h4");
+  h2.className = "col-h2";
+  h2.textContent = "BLEND WITH";
+  m.appendChild(h2);
+
+  const g2 = document.createElement("div");
+  g2.className = "colgrid";
+
+  const none = document.createElement("button");
+  none.className = "col-none";
+  none.title = "One colour only";
+  none.textContent = "\u00d7";
+  if(!person.color2) none.classList.add("on");
+  none.onclick = () => push(person.color || PALETTE[0], null);
+  g2.appendChild(none);
+
+  PALETTE.slice(0, 11).forEach(col => {
+    const b = document.createElement("button");
+    b.style.background = col;
+    b.title = "Blend with " + col;
+    if(person.color2 === col) b.classList.add("on");
+    // no base colour yet? then this is the base, not the blend
+    b.onclick = () => person.color ? push(person.color, col) : push(col, null);
+    g2.appendChild(b);
+  });
+  m.appendChild(g2);
+
+  if(person.color){
+    const prev = document.createElement("div");
+    prev.className = "col-preview";
+    prev.textContent = person.name;
+    inkText(prev, person.color, person.color2);
+    m.appendChild(prev);
+  }
 
   // anything else you like — full wheel plus a hex box
   const custom = document.createElement("div");
@@ -2993,14 +3143,14 @@ function openColorMenu(anchor, person){
 
   const apply = col => {
     if(!/^#[0-9a-fA-F]{6}$/.test(col)) return;
-    send({ type:"person-color", id:person.id, color:col.toLowerCase() });
+    push(col.toLowerCase(), person.color2);
   };
   wheel.oninput = () => { hex.value = wheel.value; };
-  wheel.onchange = () => { closeMenu(); apply(wheel.value); };
+  wheel.onchange = () => apply(wheel.value);        // apply closes the menu
   hex.onkeydown = e => {
     if(e.key === "Enter"){
       const v = hex.value.trim();
-      if(/^#?[0-9a-fA-F]{6}$/.test(v)){ closeMenu(); apply(v[0] === "#" ? v : "#" + v); }
+      if(/^#?[0-9a-fA-F]{6}$/.test(v)) apply(v[0] === "#" ? v : "#" + v);
     }
     if(e.key === "Escape") closeMenu();
   };
@@ -3037,6 +3187,7 @@ function renderBench(){
     // a name belongs to whoever added it, so there's nothing to press
     const mine = myIds.has(p.id);
     const plit = p.color ? glowInk(p.color) : null;
+    const plit2 = (p.color && p.color2) ? glowInk(p.color2) : null;
 
     const chip = document.createElement("div");
     chip.className = "chip"
@@ -3052,8 +3203,10 @@ function renderBench(){
     dot.title = "Colour for " + p.name;
     dot.setAttribute("aria-label", "Colour for " + p.name);
     if(plit){
-      dot.style.background = plit;
-      dot.style.boxShadow = "0 0 8px -1px " + plit;
+      dot.style.background = plit2
+        ? "linear-gradient(135deg," + plit + " 0%," + plit + " 45%," + plit2 + " 55%," + plit2 + " 100%)"
+        : plit;
+      dot.style.boxShadow = "0 0 8px -1px " + (plit2 || plit);
     }
     dot.onclick = ev => {
       ev.stopPropagation();          // not a pick-this-person click
@@ -3065,16 +3218,16 @@ function renderBench(){
     nm.className = "nm";
     nm.textContent = p.name;
     if(p.color){
-      const [pa, pb, pc] = auraRamp(p.color);
+      const [pa, pb, pc] = auraPair(p.color, p.color2);
       chip.classList.add("tinted");
       chip.style.setProperty("--a1", rgba(pa, .30));
       chip.style.setProperty("--a2", rgba(pb, .13));
       chip.style.setProperty("--a3", rgba(pc, .28));
       chip.style.setProperty("--e1", rgba(pa, .85));
-      chip.style.setProperty("--e2", rgba(plit, .95));
+      chip.style.setProperty("--e2", rgba(glowInk(pb), .95));
       chip.style.setProperty("--e3", rgba(pc, .85));
-      chip.style.setProperty("--glow", rgba(plit, .42));
-      nm.style.color = plit;
+      chip.style.setProperty("--glow", rgba(plit2 || plit, .42));
+      inkText(nm, p.color, p.color2);
       nm.style.fontWeight = "700";
     }
     chip.appendChild(nm);
@@ -3417,10 +3570,11 @@ function row(en,ci){
   r.className = "row";
 
   const col = en.pid ? colorOf[en.pid] : null;
+  const col2 = en.pid ? (color2Of[en.pid] || null) : null;
   const ink = col ? inkOn(col) : null;
   const lit = col ? glowInk(col) : null;
   if(col){
-    const [a, b, c2] = auraRamp(col);
+    const [a, b, c2] = auraPair(col, col2);
     r.classList.add("tinted");
     r.style.setProperty("--a1", rgba(a, .30));
     r.style.setProperty("--a2", rgba(b, .13));
@@ -3463,7 +3617,7 @@ function row(en,ci){
   } else {
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
-    if(lit) who.style.color = lit;
+    inkText(who, col, col2);
     who.draggable = true; who.title = "Drag to another channel";
     who.ondragstart = e => {
       e.stopPropagation();
@@ -3481,10 +3635,13 @@ function row(en,ci){
     r.appendChild(who);
   }
 
+  r.dataset.at = en.at;             // so the tick can escalate without a redraw
+
   const clock = document.createElement("span");
   clock.className = "clock"; clock.dataset.at = en.at; clock.textContent = elapsed(en.at);
   if(lit){ clock.style.color = lit; clock.style.opacity = ".9" }
   if(Date.now()-en.at > 90*60000) clock.classList.add("stale");
+  paintGrind(r, en.at);
   clock.title = "Click to reset the timer";
   clock.onclick = () => send({type:"timer",ch:ci,id:en.id});
   r.appendChild(clock);
@@ -4716,6 +4873,7 @@ setInterval(() => {
     c.textContent = elapsed(at);
     c.classList.toggle("stale", Date.now()-at > 90*60000);
   });
+  document.querySelectorAll(".row[data-at]").forEach(r => paintGrind(r, +r.dataset.at));
 }, 1000);
 </script>
 </body>
