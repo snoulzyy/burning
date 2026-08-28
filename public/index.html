@@ -875,6 +875,10 @@
       var(--e1) 0%,var(--e2) 25%,var(--e3) 50%,var(--e2) 75%,var(--e1) 100%);
     background-size:200% 100%;
     animation:auraEdge 9s linear infinite, auraBreath 4.2s ease-in-out infinite;
+    /* set per person, so a repaint resumes rather than restarts, and no two
+       people are in step. pseudo-elements can't take inline styles, but they
+       do inherit custom properties from the element. */
+    animation-delay:var(--d1,0s),var(--d2,0s);
     will-change:background-position,opacity;
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
     -webkit-mask-composite:xor;
@@ -902,6 +906,7 @@
     opacity:.32;
     transform:translate3d(-130%,0,0);
     animation:auraSheen 9s cubic-bezier(.45,0,.55,1) infinite;
+    animation-delay:var(--d3,0s);
     will-change:transform;
   }
   /* one pass, then it waits out of sight. both ends sit off the element so the
@@ -930,32 +935,6 @@
   .clock{font-size:10.5px;font-weight:600;color:var(--amber);cursor:pointer}
   .clock.stale{color:var(--red)}
 
-  /* ---------- the long-haul badges ---------- */
-  .grindtag{
-    flex:none;font-size:8px;font-weight:800;letter-spacing:.12em;
-    padding:2px 5px;border-radius:4px;white-space:nowrap;
-    border:1px solid currentColor;
-  }
-  .row.g1 .grindtag{color:#eab308;background:rgba(234,179,8,.10)}
-  .row.g2 .grindtag{color:#f97316;background:rgba(249,115,22,.12)}
-  .row.g3 .grindtag{color:#f87171;background:rgba(248,113,113,.14)}
-  /* the longer they sit, the harder the row argues with you about it */
-  .row.g1{box-shadow:inset 2px 0 0 rgba(234,179,8,.7)}
-  .row.g2{box-shadow:inset 2px 0 0 rgba(249,115,22,.85), 0 0 12px -6px rgba(249,115,22,.9)}
-  .row.g3{
-    box-shadow:inset 2px 0 0 #f87171, 0 0 14px -5px rgba(248,113,113,.95);
-    animation:nolife 2.4s ease-in-out infinite;
-  }
-  .row.g3 .who{animation:nolife 2.4s ease-in-out infinite}
-  @keyframes nolife{
-    0%,100%{filter:brightness(1) saturate(1)}
-    50%    {filter:brightness(1.22) saturate(1.15)}
-  }
-  @media(prefers-reduced-motion:reduce){
-    .row.g3, .row.g3 .who{animation:none}
-  }
-  /* the sidebar says it too, quietly */
-  .chip.g3 .nm{text-decoration:underline wavy rgba(248,113,113,.6) 1px}
   .row input,.newrow input{
     font-family:var(--name-face);font-weight:600;font-size:13.5px;
     color:var(--text);background:#04121a;
@@ -1612,6 +1591,34 @@ function inkText(el, c1, c2, c3){
   el.style.webkitTextFillColor = "transparent";
 }
 
+/* Keeping an aura where it was.
+   render() rebuilds these elements from scratch, and a brand new element starts
+   its animation at zero — so anyone changing a colour snapped every aura on the
+   board back to the beginning. A negative animation-delay fixes that: it starts
+   the animation partway in. Deriving it from the wall clock means a fresh
+   element picks up exactly where the old one had got to.
+   The per-person phase on top is what stops the whole board breathing in
+   unison — it's a hash of their id, so it is stable across re-renders. */
+const AURA_EDGE = 9, AURA_BREATH = 4.2, AURA_SHEEN = 9;   // seconds; match the CSS
+
+function auraPhase(seed){
+  const str = String(seed || "");
+  let h = 2166136261;
+  for(let i = 0; i < str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h % 1000) / 1000;               // 0..1, always the same for this id
+}
+
+function setAuraTiming(el, seed){
+  const p = auraPhase(seed), t = Date.now() / 1000;
+  const at = dur => "-" + ((t + p * dur) % dur).toFixed(2) + "s";
+  el.style.setProperty("--d1", at(AURA_EDGE));
+  el.style.setProperty("--d2", at(AURA_BREATH));
+  el.style.setProperty("--d3", at(AURA_SHEEN));
+}
+
 // the same colours as hard bands, for the little round swatch
 function bandGradient(cols){
   if(!cols.length) return "";
@@ -1809,38 +1816,6 @@ function ago(at){
   const h = Math.floor(m/60);
   return h < 24 ? h + "h ago" : Math.floor(h/24) + "d ago";
 }
-/* ---------------- how long they have been sat there ----------------
-   The clock already turns red at 90 minutes. Past that it escalates, because
-   a channel someone has been welded to for eight hours is worth pointing at.
-   Purely cosmetic — nothing here changes what the board does. */
-const GRIND = [
-  { mins: 180, cls:"g1", label:"3H DEEP",  note:"three hours on the same channel" },
-  { mins: 300, cls:"g2", label:"5H DEEP",  note:"five hours. go outside." },
-  { mins: 480, cls:"g3", label:"NO LIFE",  note:"eight hours straight. seek help." }
-];
-function grindTier(at){
-  const mins = (Date.now() - at) / 60000;
-  let t = -1;
-  GRIND.forEach((g, i) => { if(mins >= g.mins) t = i; });
-  return t;                       // -1 = nothing to say yet
-}
-// keeps a row's badge and classes in step without redrawing the whole board
-function paintGrind(r, at){
-  const t = grindTier(at);
-  GRIND.forEach((g, i) => r.classList.toggle(g.cls, i === t));
-  r.classList.toggle("grinding", t >= 0);
-  let tag = r.querySelector(".grindtag");
-  if(t < 0){ if(tag) tag.remove(); return; }
-  if(!tag){
-    tag = document.createElement("span");
-    tag.className = "grindtag";
-    const clock = r.querySelector(".clock");
-    if(clock) r.insertBefore(tag, clock); else r.appendChild(tag);
-  }
-  tag.textContent = GRIND[t].label;
-  tag.title = GRIND[t].note;
-}
-
 function elapsed(at){
   const m = Math.max(0, Math.floor((Date.now()-at)/60000));
   return m<60 ? m+"m" : Math.floor(m/60)+"h"+String(m%60).padStart(2,"0")+"m";
@@ -3329,6 +3304,7 @@ function renderBench(){
       chip.style.setProperty("--e3", rgba(pc, .85));
       chip.style.setProperty("--glow", rgba(plit2 || plit, .66));
       chip.style.setProperty("--ring", rgba(glowInk(pb), .58));
+      setAuraTiming(chip, p.id);
       inkText(nm, p.color, p.color2, p.color3);
       nm.style.fontWeight = "700";
     }
@@ -3689,6 +3665,7 @@ function row(en,ci){
     // the ring takes the middle of the pair, so a blend glows in between
     r.style.setProperty("--ring", rgba(glowInk(b), .62));
     r.style.setProperty("--ink",  lit);
+    setAuraTiming(r, en.pid || en.id);
   }
 
   if(editing && editing.ch===ci && editing.id===en.id){
@@ -3740,13 +3717,10 @@ function row(en,ci){
     r.appendChild(who);
   }
 
-  r.dataset.at = en.at;             // so the tick can escalate without a redraw
-
   const clock = document.createElement("span");
   clock.className = "clock"; clock.dataset.at = en.at; clock.textContent = elapsed(en.at);
   if(lit){ clock.style.color = lit; clock.style.opacity = ".9" }
   if(Date.now()-en.at > 90*60000) clock.classList.add("stale");
-  paintGrind(r, en.at);
   clock.title = "Click to reset the timer";
   clock.onclick = () => send({type:"timer",ch:ci,id:en.id});
   r.appendChild(clock);
@@ -4987,7 +4961,6 @@ setInterval(() => {
     c.textContent = elapsed(at);
     c.classList.toggle("stale", Date.now()-at > 90*60000);
   });
-  document.querySelectorAll(".row[data-at]").forEach(r => paintGrind(r, +r.dataset.at));
 }, 1000);
 </script>
 </body>
