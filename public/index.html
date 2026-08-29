@@ -173,9 +173,29 @@
      grid item are not reliable, this is */
   .bench-col{min-width:0;display:flex;flex-direction:column}
   @media(max-width:900px){
-    .board-area{grid-template-columns:1fr;align-items:start}
+    .board-area{grid-template-columns:1fr;align-items:start;padding-top:var(--benchH,0px)}
     .bench-col{display:block}
+    /* Pinned rather than sticky. Sticky needs room to travel inside its parent,
+       and on one column that parent is exactly as tall as the box itself — so
+       it scrolled away the instant you moved. Fixed gives it the whole page. */
+    .bench{
+      position:fixed;top:0;left:0;right:0;z-index:70;
+      max-height:none;border-radius:0 0 12px 12px;border-top:0;
+      box-shadow:0 10px 24px rgba(0,0,0,.65);
+    }
+    /* tap the header to get the names out of the way */
+    .bench.folded .bench-body,
+    .bench.folded .bench-add,
+    .bench.folded .bench-hint{display:none}
+    .bench-fold{
+      display:grid;place-items:center;margin-left:auto;padding:4px;line-height:0;
+      background:none;border:0;color:var(--dim);cursor:pointer;
+    }
+    .bench-fold svg{width:13px;height:13px;display:block;transition:transform .18s}
+    .bench.folded .bench-fold svg{transform:rotate(-90deg)}
+    .bench-head{cursor:pointer}
   }
+  .bench-fold{display:none}
   .bench{
     position:sticky;top:8px;z-index:30;
     display:flex;flex-direction:column;
@@ -193,18 +213,28 @@
     border-bottom:1px solid var(--line-soft);
   }
   .bench-title{font-size:13.5px;font-weight:700;letter-spacing:.01em;color:var(--text)}
-  .bench-hint{font-size:9.5px;color:var(--dim);line-height:1.3;min-width:0;margin-left:auto}
+  /* its own centred line, rather than squashed against the right edge */
+  .bench-hint{
+    flex:1 0 100%;order:5;margin:3px 0 0;
+    font-size:9.5px;color:var(--dim);line-height:1.3;text-align:center;
+  }
   /* its own full-width row under the title, so it lines up with the player rows
      instead of hanging off the right. beats .ghost on specificity, not order. */
+  /* orange, and the only thing in the box that looks like that — it is the
+     first thing a new person has to press, so it should say so */
   .bench .bench-add{
-    flex:1 0 100%;width:100%;margin:2px 0 0;
+    flex:1 0 100%;width:100%;margin:4px 0 0;order:6;
     display:flex;align-items:center;justify-content:center;gap:6px;
-    padding:7px 9px;border-radius:8px;font-size:12px;letter-spacing:.02em;
-    color:var(--dim);background:var(--raise);border:1px dashed #26374a;
+    padding:10px 9px;border-radius:9px;font-size:13px;font-weight:700;
+    letter-spacing:.03em;
+    color:var(--amber);background:rgba(245,158,11,.10);
+    border:1px solid rgba(245,158,11,.65);
+    box-shadow:0 0 14px -6px rgba(245,158,11,.9);
   }
   .bench .bench-add:hover{
-    color:var(--cyan);background:rgba(34,211,238,.07);
-    border-style:solid;border-color:rgba(34,211,238,.5);
+    color:#fbbf24;background:rgba(245,158,11,.18);
+    border-color:rgba(245,158,11,.9);
+    box-shadow:0 0 16px -4px rgba(245,158,11,.95);
   }
   .bench-body{
     display:flex;flex-direction:column;gap:5px;padding:9px 10px;
@@ -629,6 +659,44 @@
   @media(max-width:1180px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
   @media(max-width:940px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
+  /* a tablet sits between the two — five is too many, two wastes the width */
+  @media(min-width:701px) and (max-width:900px){
+    .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+  }
+
+  /* ---------- touch ---------- */
+  @media(max-width:900px){
+    /* a quick second tap should press the thing again, not zoom the page.
+       pinch still works — this only takes away double-tap-to-zoom. */
+    body,.grid,.ch,.bench,.drawer{touch-action:manipulation}
+
+    /* thumbs, not cursors */
+    .icon{width:32px;height:32px;font-size:14px;border-radius:8px}
+    .icon svg{width:14px;height:14px}
+    .ch .row{gap:7px;padding:7px 8px}
+    .ch-add{width:32px;height:32px;font-size:18px}
+    .pct{padding:6px 10px;font-size:12.5px}
+    .durbtn{width:28px;height:28px}
+    .durbtn svg{width:14px;height:14px}
+    .movebar{padding:9px 0}
+    .chip{padding:9px 10px}
+    .pdot{width:14px;height:14px}
+    .fbtn{padding:10px 16px}
+    .tab{padding:10px 15px}
+  }
+
+  /* ---------- jump to wherever you are ---------- */
+  .jumpme{
+    position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    z-index:65;display:none;align-items:center;gap:7px;
+    padding:11px 15px;border-radius:999px;font:inherit;font-size:12.5px;font-weight:700;
+    color:#04121a;background:var(--cyan);border:0;cursor:pointer;
+    box-shadow:0 10px 26px rgba(0,0,0,.6), 0 0 20px -6px var(--cyan);
+  }
+  .jumpme svg{width:13px;height:13px;display:block}
+  @media(max-width:900px){ .jumpme.on{display:inline-flex} }
+  /* out of the way when the queue is open, since that lives in the same corner */
+  html.drawer-open .jumpme{display:none !important}
   @media(max-width:360px){.grid{grid-template-columns:1fr}}
 
   .ch{
@@ -1407,12 +1475,14 @@
     </div>
   </header>
 
+  <button class="jumpme" id="jumpMe" hidden>jump to me</button>
   <div class="board-area">
   <div class="bench-col">
     <section class="bench">
       <div class="bench-head">
         <span class="bench-title" id="benchTitle">Players (0)</span>
         <span class="bench-hint" id="benchHint">drag, or click then click a channel</span>
+        <button class="bench-fold" id="benchFold" aria-label="Show or hide the names"></button>
         <button class="ghost bench-add" id="benchAdd">+ add</button>
       </div>
       <div class="bench-body" id="bench"></div>
@@ -2329,10 +2399,10 @@ const HELP_HTML = `
      don't get bothered.</p>
 
   <h5>40 MINUTE ALERT</h5>
-  <p>On B1 and the RD boards: when someone on a channel hits 40 minutes, everyone
-     <em>on that channel</em> gets a sound and a popup. Nobody else is bothered by it.
-     The GOB boards don't do this at all.</p>
-  <p>RD boards only — GOB1 and GOB5 never chime.</p>
+  <p>On <span class="k">B1</span>, <span class="k">RD1</span> and <span class="k">RD4</span>:
+     when someone on a channel hits 40 minutes, everyone <em>on that channel</em> gets a
+     sound and a popup. Nobody else is bothered by it.</p>
+  <p>Every other board is silent — RD6, RD7 and all the GOB boards never chime.</p>
   <p>Best way to be included: mark yourself in the people box above. Failing that it
      matches the display name you set at the bottom of the chat.</p>
 
@@ -3889,6 +3959,8 @@ function renderBench(){
   document.querySelector(".bench").classList.toggle("armed", !!pickedPerson);
   const title = document.getElementById("benchTitle");
   if(title) title.textContent = "Players (" + roster.length + ")";
+  if(typeof fitBench === "function") fitBench();   // its height just changed
+  if(typeof paintJump === "function") paintJump();
   document.getElementById("benchHint").textContent = pickedPerson
     ? "now click the channel to put them on"
     : "drag, or click then click a channel";
@@ -4646,7 +4718,11 @@ soundBtn.onclick = () => {
 const CHANNEL_ALERT_MINUTES = 40;
 // which areas get the 40 minute alert. keyed on area rather than board name,
 // so a new RD map is covered the moment it's added
-const ALERT_AREAS = ["B1", "RD"];
+/* Named boards, not whole areas. It used to be keyed on the area, which meant
+   any new RD map was covered the moment it was added — but that is now the
+   wrong default: RD6 and RD7 are not meant to chime. Adding a board here is
+   the deliberate step that turns its alert on. */
+const ALERT_BOARDS = ["B1", "RD1", "RD4"];
 const alertedChannels = new Set();      // "REGION:index" while a channel is over
 let timersPrimed = false;               // first pass just takes stock, silently
 
@@ -4664,7 +4740,7 @@ function checkChannelTimers(){
   const now = Date.now();
   const priming = !timersPrimed;
   Object.keys(boards).forEach(r => {
-    if(!ALERT_AREAS.includes(areaOf[r])) return;   // GOB boards stay quiet
+    if(!ALERT_BOARDS.includes(r)) return;          // every other board stays quiet
     (boards[r] || []).forEach((c, idx) => {
       const key = r + ":" + idx;
       const over = c.entries.some(e => now - e.at >= limit);
@@ -4927,6 +5003,78 @@ socket.on("music", m => {
   syncPlayer();
 });
 
+/* ---- jump to whichever channel you are on ----
+   Forty cards on a phone is a lot of scrolling to find yourself. Only appears
+   when you are actually on one of this board's channels, so it is never a
+   button that does nothing. */
+const jumpBtn = document.getElementById("jumpMe");
+
+function myChannelIndex(){
+  if(!Array.isArray(board)) return -1;
+  for(let i = 0; i < board.length; i++){
+    if(onThisChannel(board[i])) return i;
+  }
+  return -1;
+}
+
+function paintJump(){
+  if(!jumpBtn) return;
+  const i = myChannelIndex();
+  jumpBtn.hidden = i < 0;
+  jumpBtn.classList.toggle("on", i >= 0);
+  if(i >= 0){
+    jumpBtn.textContent = "jump to " + chLabel(i);
+    jumpBtn.dataset.idx = String(i);
+  }
+}
+
+if(jumpBtn) jumpBtn.onclick = () => {
+  const i = Number(jumpBtn.dataset.idx);
+  const card = document.querySelectorAll("#grid .ch")[i];
+  if(!card) return;
+  if(card.scrollIntoView) card.scrollIntoView({ block: "center", behavior: "smooth" });
+  card.classList.add("flash");
+  setTimeout(() => card.classList.remove("flash"), 1200);
+};
+
+/* ---- the Players box on a narrow screen ----
+   It is pinned to the top there, so the board has to be pushed down by however
+   tall it currently is — which changes as names are added, and when it is
+   folded away. Measured rather than guessed, and re-measured whenever it could
+   have changed. */
+const benchBox = document.querySelector(".bench");
+const benchFold = document.getElementById("benchFold");
+if(benchFold) benchFold.innerHTML = chevron("right");
+
+let benchFolded = false;
+try { benchFolded = localStorage.getItem("ct:benchfold") === "1" } catch(e){}
+
+function isNarrow(){
+  // matchMedia is not everywhere, and the width alone answers the question
+  return (window.innerWidth || document.documentElement.clientWidth || 0) <= 900;
+}
+
+function fitBench(){
+  if(!benchBox) return;
+  benchBox.classList.toggle("folded", benchFolded && isNarrow());
+  const h = isNarrow() ? benchBox.offsetHeight : 0;
+  document.documentElement.style.setProperty("--benchH", h ? (h + 8) + "px" : "0px");
+}
+
+if(benchBox){
+  const head = benchBox.querySelector(".bench-head");
+  if(head) head.addEventListener("click", e => {
+    if(!isNarrow()) return;
+    if(e.target.closest("#benchAdd")) return;      // the add button is still that
+    benchFolded = !benchFolded;
+    try { localStorage.setItem("ct:benchfold", benchFolded ? "1" : "0") } catch(e2){}
+    fitBench();
+  });
+}
+window.addEventListener("resize", fitBench);
+if(window.visualViewport) window.visualViewport.addEventListener("resize", fitBench);
+fitBench();
+
 /* ---- the drawer ---- */
 const drawer = document.getElementById("drawer");
 /* Drag it about by its header.
@@ -4994,14 +5142,21 @@ window.addEventListener("resize", clampDrawer);
   head.addEventListener("pointercancel", stop);
 })();
 
+function paintDrawerOpen(){
+  // the jump button lives in the same corner, so it stands aside
+  document.documentElement.classList.toggle("drawer-open", !drawer.hidden);
+}
 document.getElementById("musicBtn").onclick = () => {
   drawer.hidden = !drawer.hidden;
   if(!drawer.hidden){ resetDrawerSpot(); renderMusic(); }
+  paintDrawerOpen();
 };
 document.getElementById("drawerX").onclick = () => {
   drawer.hidden = true;
   resetDrawerSpot();               // back to the corner for next time
+  paintDrawerOpen();
 };
+paintDrawerOpen();
 
 document.getElementById("songAdd").onclick = addSong;
 document.getElementById("songInput").addEventListener("keydown", e => {
