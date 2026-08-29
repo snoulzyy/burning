@@ -257,6 +257,7 @@ const since = t => {
 
 function adminPage() {
   const seen = Object.values(state.seen).sort((a, b) => (b.last || 0) - (a.last || 0));
+  const n = state.notice || { text: "" };
   const rows = seen.map(v => `<tr>
       <td>${esc(v.name || "—")}</td>
       <td class="dim">${esc(v.ip || "—")}</td>
@@ -285,6 +286,39 @@ function adminPage() {
   return `<!doctype html><meta charset="utf-8"><title>·</title>
 <meta name="robots" content="noindex,nofollow">
 <style>
+  .say{max-width:900px;margin:0 0 26px}
+  .say textarea{
+    width:100%;box-sizing:border-box;min-height:74px;resize:vertical;
+    background:#0b131c;color:#e6edf5;border:1px solid #22303f;border-radius:8px;
+    padding:9px 11px;font:inherit;font-size:13px;line-height:1.5;
+  }
+  .say textarea:focus{outline:none;border-color:#eab308}
+  .say .row{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .say button{
+    font:inherit;font-size:12px;padding:7px 14px;border-radius:7px;cursor:pointer;
+    color:#2a1a02;background:#eab308;border:0;font-weight:700;
+  }
+  .say .clear{color:#8ba0b4;background:none;border:1px solid #22303f;font-weight:400}
+  .say .clear:hover{color:#f87171;border-color:#f87171}
+  .say .now{font-size:11px;color:#8ba0b4}
+  /* what it will look like on the board, before anybody sees it */
+  .pv-label{font-size:9.5px;letter-spacing:.16em;color:#5f7285;margin:16px 0 7px}
+  .pv{
+    border-radius:12px;padding:11px 13px;
+    background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.45);
+  }
+  .pv-top{display:flex;align-items:center;gap:10px}
+  .pv-tag{font-size:10px;font-weight:800;letter-spacing:.18em;color:#eab308}
+  .pv-ic{color:#eab308;line-height:0}
+  .pv-body{
+    margin:9px 0 0;font-size:13px;line-height:1.6;color:#e6edf5;
+    white-space:pre-wrap;word-break:break-word;
+  }
+  .pv-by{display:block;margin-top:8px;font-size:10.5px;color:#8ba0b4}
+  .pv.empty{opacity:.4}
+  .pv.empty .pv-body{color:#5f7285;font-style:italic}
+</style>
+<style>
   body{background:#050a10;color:#e6edf5;font:13px ui-monospace,monospace;margin:0;padding:22px}
   h2{font-size:12px;letter-spacing:.16em;color:#22d3ee;margin:0 0 10px;font-weight:700}
   h2.two{margin-top:26px}
@@ -298,7 +332,50 @@ function adminPage() {
   .none{color:#5f7285;padding:10px 0}
   .pend{color:#eab308}
 </style>
-<h2>ON THE SITE LATELY</h2>
+<h2>ANNOUNCEMENT</h2>
+<form class="say" method="GET">
+  <textarea name="notice" maxlength="240" placeholder="Shown to everyone at the top of the board. Leave empty and press clear to take it down.">${esc(n.text || "")}</textarea>
+  <p class="pv-label">HOW IT WILL LOOK</p>
+  <div class="pv" id="pv">
+    <div class="pv-top">
+      <span class="pv-ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+        stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+        ><path d="M4 10v4a1 1 0 0 0 1 1h2l7 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M18 9.5a3.5 3.5 0 0 1 0 5"/></svg></span>
+      <span class="pv-tag">NOTICE</span>
+    </div>
+    <p class="pv-body" id="pvBody"></p>
+  </div>
+
+  <div class="row">
+    <button type="submit" name="post" value="1">post it</button>
+    <button type="submit" name="unnotice" value="1" class="clear">clear</button>
+    <span class="now">${n.text ? "up now — posted " + esc(since(n.at)) + (n.by ? " by " + esc(n.by) : "") : "nothing up"}</span>
+  </div>
+</form>
+
+<h2 class="two">ON THE SITE LATELY</h2>
+<script>
+  // live preview: the box on the left, the banner as the board will draw it
+  (function(){
+    var box = document.querySelector('.say textarea');
+    var pv = document.getElementById('pv');
+    var body = document.getElementById('pvBody');
+    if(!box || !pv || !body) return;
+    function draw(){
+      var t = box.value.trim();
+      pv.className = t ? 'pv' : 'pv empty';
+      body.textContent = t || 'Nothing yet — type above and it appears here.';
+      if(t){
+        var by = document.createElement('span');
+        by.className = 'pv-by';
+        by.textContent = '\u2014 admin, just now';
+        body.appendChild(by);
+      }
+    }
+    box.addEventListener('input', draw);
+    draw();
+  })();
+</script>
 ${rows ? `<table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table>`
        : `<p class="none">Nobody yet.</p>`}
 <h2 class="two">BANNED</h2>
@@ -324,6 +401,21 @@ if (ADMIN_KEY) {
     }
     if (q.unban)   { delete state.bans.ids[q.unban];   changed = true; }
     if (q.unbanip) { delete state.bans.ips[q.unbanip]; changed = true; }
+
+    // the announcement everyone sees at the top of the board
+    if (q.post) {
+      const text = clean(q.notice, 240);
+      state.notice = text ? { text, by: "admin", at: Date.now() } : { text: "", by: "", at: 0 };
+      live.forEach(r => note(r, text ? "announcement posted" : "announcement cleared"));
+      broadcastNotice();
+      changed = true;
+    }
+    if (q.unnotice) {
+      state.notice = { text: "", by: "", at: 0 };
+      live.forEach(r => note(r, "announcement cleared"));
+      broadcastNotice();
+      changed = true;
+    }
 
     if (changed) {
       persist();
