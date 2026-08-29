@@ -837,7 +837,7 @@
   .drawer.size-s .listeners{font-size:9.5px;padding:2px 4px}
   .drawer.size-s .drawer-head .ghost{font-size:9.5px;padding:4px 7px}
   .drawer.size-s .size-btn{min-width:0}
-  .drawer.size-s .drawer-x{margin-left:auto}
+
   .drawer.size-s .now{padding:11px 10px}
   .drawer.size-s .drawer-add{padding:9px 10px}
   .drawer.size-s .queue{padding:7px}
@@ -897,11 +897,26 @@
   html.has-bg .bgvid-btn.on{
     color:#04202a;background:#a78bfa;border-color:#a78bfa;font-weight:800;
   }
-  .drawer-x{
-    font:inherit;font-size:12px;line-height:1;color:var(--dim);
-    background:none;border:0;cursor:pointer;padding:2px 3px;
+  /* Its own strip above QUEUE. These used to sit at the end of the header row,
+     which wraps at the small size — so the ✕ jumped from the right to the left
+     depending on how wide the box was. Up here it never moves. */
+  .drawer-bar{
+    display:flex;align-items:center;justify-content:flex-end;gap:2px;
+    padding:5px 8px 0;cursor:grab;
   }
-  .drawer-x:hover{color:var(--text)}
+  .drawer.dragging .drawer-bar{cursor:grabbing}
+  .drawer-x{
+    font:inherit;font-size:13px;line-height:1;color:var(--dim);
+    width:26px;height:22px;display:grid;place-items:center;
+    background:none;border:0;cursor:pointer;padding:0;border-radius:6px;
+  }
+  .drawer-x:hover{color:var(--text);background:rgba(255,255,255,.07)}
+  #drawerX:hover{color:var(--red);background:rgba(248,113,113,.14)}
+  /* minimised: the strip and the header stay, everything else folds away */
+  .drawer.min .now,
+  .drawer.min .drawer-add,
+  .drawer.min .queue{display:none}
+  .drawer.min .drawer-head{border-bottom:0}
 
   .now{position:relative;min-height:300px;padding:14px 14px;border-bottom:1px solid var(--line-soft);overflow:hidden}
   .now > *{position:relative;z-index:1}
@@ -1007,6 +1022,32 @@
     .queue{max-height:200px}
     .drawer.size-l .now{min-height:250px}
   }
+
+  /* ---------------- mvp comms ----------------
+     Short lines about what is up and where. They sit next to the MVP button
+     because that is where people look when one is called. */
+  .mvpnotes{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .mvpnote{
+    display:inline-flex;align-items:center;gap:7px;max-width:280px;
+    padding:5px 6px 5px 10px;border-radius:999px;
+    font-size:11.5px;letter-spacing:.02em;color:#fbbf24;
+    background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5);
+  }
+  .mvpnote .nt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mvpnote .nby{font-size:9.5px;color:var(--dim);flex:none}
+  .mvpnote .nx{
+    display:grid;place-items:center;flex:none;width:16px;height:16px;padding:0;
+    line-height:0;cursor:pointer;border:0;border-radius:50%;
+    background:none;color:rgba(245,158,11,.7);
+  }
+  .mvpnote .nx svg{width:9px;height:9px;display:block}
+  .mvpnote .nx:hover{color:var(--red);background:rgba(248,113,113,.15)}
+  .mvpnote-add{
+    font:inherit;font-size:11.5px;padding:5px 11px;border-radius:999px;cursor:pointer;
+    color:var(--dim);background:none;border:1px dashed rgba(245,158,11,.45);
+  }
+  .mvpnote-add:hover{color:var(--amber);border-style:solid;border-color:rgba(245,158,11,.8)}
+  @media(max-width:700px){ .mvpnote{max-width:190px} }
 
   /* ---------------- mvp popup ---------------- */
   .mvp-pop{
@@ -1533,6 +1574,7 @@
       <button class="timerreset" id="mvpTimerReset" title="Restart the countdown from 29:30" aria-label="Restart countdown"></button>
     </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
+    <span class="mvpnotes" id="mvpNotes"></span>
     <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
     <button class="gear-btn" id="helpBtn" title="Settings" aria-label="Settings"></button>
     <div class="headright">
@@ -1650,13 +1692,17 @@
   </div>
 
   <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-bar" id="drawerBar">
+      <button class="drawer-x" id="drawerMin" aria-label="Minimise">–</button>
+      <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
+    </div>
+
     <div class="drawer-head">
       <span class="drawer-title">QUEUE</span>
       <button class="listeners" id="listenCount" title="Who has the music on right now">0 listening</button>
       <button class="ghost listen-btn" id="listenBtn" title="Play the queue on this device">listen: off</button>
       <button class="ghost skip-btn" id="skipBtn" title="Skip to the next song">skip</button>
       <button class="ghost size-btn" id="sizeBtn" title="Player size">size: M</button>
-      <button class="drawer-x" id="drawerX" aria-label="Close">✕</button>
     </div>
 
     <div class="now" id="nowBox">
@@ -2390,45 +2436,46 @@ function messageNodes(text){
 /* ---------------- help panel ---------------- */
 const HELP_HTML = `
   <p><span class="k">New here?</span> Press <span class="k">+ add</span> in the Players box
-     and put your name in. Nothing works until you do.</p>
-  <p><span class="k">Want a colour like everyone else?</span> Click the round
-     <span class="k">●</span> next to your name in that box.</p>
+     and put your name in. Nothing works until you do. Want a colour like everyone else?
+     Click the round <span class="k">●</span> beside your name.</p>
 
   <h5>CHANNELS</h5>
-  <p><span class="k">+</span> adds someone. The <span class="k">%</span> badge sets burning.
-     The clock icon fixes how long it has really been going.</p>
-  <p>Drag a name to move them, or the <span class="k">⋮⋮</span> grip to move the group.
-     Onto an empty channel it moves, onto a full one it swaps.</p>
+  <p><span class="k">+</span> adds someone. The <span class="k">%</span> badge sets burning,
+     the clock icon fixes how long it has really been going.</p>
+  <p>Drag a name to move them, or the <span class="k">⋮⋮</span> grip for the whole group —
+     onto an empty channel it moves, onto a full one it swaps.</p>
   <p>Join a channel already going and you take its timer.</p>
 
   <h5>BURNING</h5>
-  <p>Set what you see. The board does the sums.</p>
+  <p>Set what you see — the board does the sums.</p>
   <p>Falls <span class="k">10% every 15 minutes</span> while people are on it, counting only
      drops since anyone last set it. Empty, it climbs <span class="k">10% an hour</span>.
      Frozen <span class="k">22:00–08:00 UTC</span> — the climb only, it still falls.</p>
-  <p>The bar under a full channel opens <span class="k">PROJECTED BURNS</span>: where to go
-     next. A channel with room for your whole group ranks above a higher burning one.</p>
+  <p>The bar under a full channel opens <span class="k">PROJECTED BURNS</span>. A channel
+     with room for your whole group ranks above a higher burning one.</p>
 
   <h5>PLAYERS BOX</h5>
-  <p>Names you add are yours to rename, recolour and remove. Click one then click a channel,
-     or drag it across.</p>
-  <p>Click the <span class="k">dot</span> for colours — up to three, blended.
+  <p>Names you add are yours to rename, recolour and remove. Click one then a channel, or
+     drag it across.</p>
+  <p>The <span class="k">dot</span> opens colours — up to three, blended.
      <span class="k">FILL FROM THE FIRST</span> builds a set from one; the slider widens it.
      Nothing applies until you press apply.</p>
 
   <h5>MUSIC</h5>
   <p>Paste a YouTube link. Everyone hears the same moment — pause, skip and scrubbing carry
      to the room.</p>
-  <p><span class="k">listen</span> turns your sound on. <span class="k">size</span> steps the
-     box. Drag its header to move it. <span class="k">video wallpaper</span> puts the video
-     behind the page.</p>
-  <p>Click <span class="k">N listening</span> for who has it on, and <span class="k">✕</span>
-     to turn theirs off.</p>
+  <p><span class="k">listen</span> turns your sound on, <span class="k">size</span> steps the
+     box, and its header drags. <span class="k">video wallpaper</span> puts the video behind
+     the page.</p>
+  <p><span class="k">N listening</span> shows who has it on; <span class="k">✕</span> turns
+     theirs off.</p>
 
   <h5>MVP</h5>
   <p><span class="k">MVP</span> alarms everyone on a channel. Right-click to write your own
      message — <code>*stars*</code> make text bold.</p>
-  <p><span class="k">29:30</span> is started by hand. It shakes for a minute after an MVP
+  <p><span class="k">+ mvp comms</span> posts what is up and where, like
+     <code>ch18 zak xx:00/30 1/4</code>. They stay until someone clears them.</p>
+  <p><span class="k">29:30</span> is started by hand, and shakes for a minute after an MVP
      call to remind you.</p>
 
   <h5>40 MINUTE ALERT</h5>
@@ -2436,12 +2483,12 @@ const HELP_HTML = `
      only: at 40 minutes the people on that channel get a sound and a popup. Every other
      board is silent.</p>
 
+
   <h5>THE REST</h5>
-  <p>Boards share their area's Players list and one chat. Filters and search narrow the grid.
-     Hide unused tabs with the <span class="k">›</span>.</p>
+  <p>Boards share their area's Players list and one chat. Filters and search narrow the
+     grid; hide unused tabs with the <span class="k">›</span>.</p>
   <p>On a phone the Players box and tabs stay pinned, and <span class="k">jump to me</span>
-     finds your channel. Everything is logged with a name. The gear holds background, alert
-     sound and the projection rules.</p>
+     finds your channel. The gear holds background, alert sound and the burning rules.</p>
 `;
 
 function openHelp(focusId){
@@ -4597,6 +4644,57 @@ function renameMyChips(oldName){
 }
 
 const mvpBtn = document.getElementById("mvpBtn");
+/* ---- MVP comms ----
+   Whatever people want to say about what is up and where. They stay until
+   somebody clears them, because only the person who was there knows when a
+   boss is done. */
+let mvpNotes = [];
+socket.on("mvpnotes", arr => { mvpNotes = Array.isArray(arr) ? arr : []; renderMvpNotes(); });
+
+function renderMvpNotes(){
+  const box = document.getElementById("mvpNotes");
+  if(!box) return;
+  box.innerHTML = "";
+
+  mvpNotes.forEach(n => {
+    const chip = document.createElement("span");
+    chip.className = "mvpnote";
+    chip.title = n.text + "  ·  posted by " + (n.by || "someone");
+
+    const t = document.createElement("span");
+    t.className = "nt";
+    t.textContent = n.text;
+
+    const by = document.createElement("span");
+    by.className = "nby";
+    by.textContent = n.by || "";
+
+    const x = document.createElement("button");
+    x.className = "nx";
+    x.innerHTML = crossSVG();
+    x.title = "Clear this";
+    x.onclick = () => send({ type:"mvpnote-clear", id: n.id });
+
+    chip.append(t, by, x);
+    box.appendChild(chip);
+  });
+
+  if(mvpNotes.length < 8){
+    const add = document.createElement("button");
+    add.className = "mvpnote-add";
+    add.textContent = mvpNotes.length ? "+" : "+ mvp comms";
+    add.title = "Post what is up and where — ch18 zak xx:00/30 1/4";
+    add.onclick = () => {
+      if(!needName("Add yourself in Players before posting MVP comms.")) return;
+      const v = prompt("MVP comms — what is up and where?", "");
+      const text = (v || "").trim().slice(0, 60);
+      if(text) send({ type:"mvpnote", text });
+    };
+    box.appendChild(add);
+  }
+}
+renderMvpNotes();
+
 /* The countdown has to be started by hand once the MVP is actually given, and
    that is a while after the call — so the button asks for a minute, then stops.
    It shuts up early the moment somebody starts it, and never starts asking if
@@ -5169,11 +5267,15 @@ function clampDrawer(){
 window.addEventListener("resize", clampDrawer);
 
 (function(){
-  const head = drawer.querySelector(".drawer-head");
-  if(!head) return;
+  // both the button strip and the QUEUE row drag it — whichever you grab
+  const handles = [".drawer-bar", ".drawer-head"]
+    .map(sel => drawer.querySelector(sel)).filter(Boolean);
+  if(!handles.length) return;
   let dragging = false, dx = 0, dy = 0, id = null;
+  const on = (ev, fn, opts) => handles.forEach(h => h.addEventListener(ev, fn, opts));
+  const head = handles[0];
 
-  head.addEventListener("pointerdown", e => {
+  on("pointerdown", e => {
     // the buttons in the header are still buttons
     if(e.target.closest("button, input, a")) return;
     if(e.button !== undefined && e.button !== 0) return;
@@ -5192,7 +5294,7 @@ window.addEventListener("resize", clampDrawer);
     e.preventDefault();
   });
 
-  head.addEventListener("pointermove", e => {
+  on("pointermove", e => {
     if(!dragging || e.pointerId !== id) return;
     const r = drawer.getBoundingClientRect();
     const maxL = Math.max(8, window.innerWidth  - r.width  - 8);
@@ -5208,9 +5310,30 @@ window.addEventListener("resize", clampDrawer);
     try { head.releasePointerCapture(id); } catch(err){}
     id = null;
   };
-  head.addEventListener("pointerup", stop);
-  head.addEventListener("pointercancel", stop);
+  on("pointerup", stop);
+  on("pointercancel", stop);
 })();
+
+/* Minimised keeps the box where it is, just folded to its strip and header —
+   so the queue is one tap away rather than reopening from the toolbar. */
+let drawerMin = false;
+try { drawerMin = localStorage.getItem("ct:drawermin") === "1" } catch(e){}
+
+function paintDrawerMin(){
+  drawer.classList.toggle("min", drawerMin);
+  const b = document.getElementById("drawerMin");
+  if(b){
+    b.textContent = drawerMin ? "+" : "\u2013";
+    b.title = drawerMin ? "Open it back up" : "Minimise";
+    b.setAttribute("aria-label", b.title);
+  }
+}
+document.getElementById("drawerMin").onclick = () => {
+  drawerMin = !drawerMin;
+  try { localStorage.setItem("ct:drawermin", drawerMin ? "1" : "0") } catch(e){}
+  paintDrawerMin();
+};
+paintDrawerMin();
 
 function paintDrawerOpen(){
   // the jump button lives in the same corner, so it stands aside
@@ -5574,16 +5697,38 @@ let quietUntil = 0;
 function hushPlayer(ms){ quietUntil = Date.now() + (ms || 1200); }
 function userDrivenChange(){ return Date.now() > quietUntil; }
 
+/* How long the song actually is.
+   getDuration() lies for the first second or two after a load — it hands back
+   the previous video's length, or a pre-roll ad's, until the real one is
+   ready. Reporting that once and never again is what made songs cut off
+   partway and the queue move on. So: only read it while the player is really
+   playing the video we asked for, and keep checking, sending anything longer
+   than what was sent before. The server only accepts longer values too, so a
+   stale short reading cannot truncate anything. */
 let durSent = {};
 function reportDuration(){
   const cur = music.playing;
   if(!cur || !ytPlayer || !ytPlayer.getDuration) return;
-  if(durSent[cur.id]) return;
-  const d = Math.round(ytPlayer.getDuration());
-  if(d > 0){
-    durSent[cur.id] = true;
-    musicAction({ type:"music-duration", id: cur.id, seconds: d });
-  }
+
+  // the wrong video still loaded? its length is not this song's length
+  try {
+    if(ytPlayer.getVideoData){
+      const vd = ytPlayer.getVideoData();
+      if(vd && vd.video_id && cur.videoId && vd.video_id !== cur.videoId) return;
+    }
+  } catch(e){ return; }
+
+  let d = 0;
+  try { d = Math.round(ytPlayer.getDuration()); } catch(e){ return; }
+  if(!(d > 0)) return;
+  if(d <= (durSent[cur.id] || 0)) return;      // nothing new to say
+  durSent[cur.id] = d;
+  musicAction({ type:"music-duration", id: cur.id, seconds: d });
+}
+
+// keep asking for a while after a load, since the true length arrives late
+function watchDuration(){
+  [1200, 3000, 6000, 12000, 25000].forEach(ms => setTimeout(reportDuration, ms));
 }
 
 function reportTitle(){
@@ -5622,11 +5767,12 @@ function syncPlayer(){
   }
 
   const want = expectedOffset(cur);
-  // already past the end? tell the server rather than trying to play thin air
-  if(cur.duration && want >= cur.duration - 1){
-    if(ytWanted === cur.id) musicAction({ type:"music-ended", id: cur.id });
-    return;
-  }
+  /* Nothing here decides a song is over.
+     There used to be a check that called it finished once the shared clock ran
+     past the length we had been told — and if that length was wrong, or the
+     clock had drifted, it cut off a song that was playing perfectly well. The
+     player's own ENDED event is the only thing that ends a song now. Being out
+     of sync is a cosmetic problem; skipping somebody's song is not. */
 
   // a different song, or a different video in the same slot -> load it
   if(ytWanted !== cur.id || ytVideo !== cur.videoId){
@@ -5635,7 +5781,8 @@ function syncPlayer(){
     forgetSeekWatch();
     hushPlayer(2500);                     // a fresh load throws off its own state changes
     if(ytPlayer.loadVideoById) ytPlayer.loadVideoById({ videoId: cur.videoId, startSeconds: Math.floor(want) });
-    setTimeout(() => { reportTitle(); reportDuration(); }, 1200);
+    setTimeout(reportTitle, 1200);
+    watchDuration();
     syncBgPlayer();
     return;
   }

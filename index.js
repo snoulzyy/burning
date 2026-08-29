@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 3000;
 const CHANNELS = 40;
 const CAP = 4;
 const LOG_MAX = 300;
-const MUSIC_LOG_MAX = 120;      // the music log is shown on every board, so keep it short
+const MUSIC_LOG_MAX = 120;
+const MVP_NOTES_MAX = 8;      // more than this on screen and none of them get read      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
 // Add a region here and it gets its own URL, its own board, its own chat.
@@ -92,6 +93,15 @@ function hydrate(saved) {
   if (!state.bans.ids || typeof state.bans.ids !== "object") state.bans.ids = {};
   if (!state.bans.ips || typeof state.bans.ips !== "object") state.bans.ips = {};
   if (!state.seen || typeof state.seen !== "object") state.seen = {};
+
+  /* MVP comms: short lines people post about what is up and where, like
+     "ch18 zak xx:00/30 1/4". They stay until somebody clears them — stale is
+     better than gone here, because the only person who knows a boss is dead is
+     whoever was there. Shared by every board, since MVP is not per-map. */
+  if (!Array.isArray(state.mvpNotes)) state.mvpNotes = [];
+  state.mvpNotes = state.mvpNotes
+    .filter(n => n && typeof n.text === "string")
+    .slice(-MVP_NOTES_MAX);
 
   if (!Array.isArray(state.musicLog)) state.musicLog = [];
   const keepChat = [];
@@ -648,23 +658,40 @@ function scheduleAllDrops() {
   });
 }
 
+/* When to move on to the next song.
+   The player's own ENDED event is the real answer, and it is the only thing
+   that should cut a song off. This timer is the fallback for when nobody is
+   listening — otherwise a queue would sit on a finished song forever.
+
+   So: if anyone has the music on, this does not fire at all. Their player will
+   say when it is done. If the length we were told is wrong, the worst that
+   happens is the song plays to its real end, which is what should happen.
+   With nobody listening there is no player to ask, so the timer moves things
+   along — generously late, since a length that is short by a few seconds
+   should not clip anything. */
+const END_GRACE = 20000;
+
 function scheduleSongEnd() {
   clearTimeout(songHandle);
   songHandle = null;
   const cur = state.music.playing;
   if (!cur || !cur.duration || cur.paused) return;   // a paused song has no end coming
-  const left = cur.startedAt + cur.duration * 1000 + 2000 - Date.now();
-  if (left <= 0) {
+
+  const advance = () => {
+    const now = state.music.playing;
+    if (!now || now.id !== cur.id) return;           // it already moved on
+    if (listeners.size) {                            // somebody is hearing it
+      songHandle = setTimeout(advance, 15000);       // ask again shortly
+      return;
+    }
     startNext();
     persist();
     broadcastMusic();
-    return;
-  }
-  songHandle = setTimeout(() => {
-    startNext();
-    persist();
-    broadcastMusic();
-  }, left);
+  };
+
+  const left = cur.startedAt + cur.duration * 1000 + END_GRACE - Date.now();
+  if (left <= 0) { advance(); return; }
+  songHandle = setTimeout(advance, left);
 }
 
 function broadcastNotice() {
@@ -747,6 +774,7 @@ io.on("connection", socket => {
     socket.emit("music", musicView());
     socket.emit("musiclog", state.musicLog);
     socket.emit("proj", state.proj);
+    socket.emit("mvpnotes", state.mvpNotes);
     socket.emit("listeners", listenersView());
     presence();
   });
@@ -986,14 +1014,24 @@ io.on("connection", socket => {
       case "music-duration": {
         const secs = Math.max(0, Math.min(60 * 60 * 6, Math.round(Number(a.seconds))));
         if (!secs) return;
-        if (state.music.playing && state.music.playing.id === a.id && !state.music.playing.duration) {
-          state.music.playing.duration = secs;
+        const cur = state.music.playing;
+        /* A correction is allowed, not just the first answer.
+           YouTube reports the previous video's length — or a pre-roll ad's —
+           until the real one has loaded, and that first number used to be
+           locked in forever. The song then ended at the wrong moment and the
+           queue moved on with several minutes still to play.
+           Only a longer value wins: a short ad reading can never truncate a
+           song that is already known to be longer. */
+        if (cur && cur.id === a.id && secs > (cur.duration || 0)) {
+          const was = cur.duration || 0;
+          cur.duration = secs;
+          if (was) musicNote(`${cur.title || "the song"} is ${mmss(secs)}, not ${mmss(was)}`);
           scheduleSongEnd();
           persist();
           broadcastMusic();
         }
         const q = state.music.queue.find(t => t.id === a.id);
-        if (q) q.duration = secs;
+        if (q && secs > (q.duration || 0)) q.duration = secs;
         return;
       }
       case "music-pause": {
@@ -1083,6 +1121,28 @@ io.on("connection", socket => {
         persist();
         scheduleMvpTimer();
         io.emit("mvptimer", state.mvpTimer);
+        broadcast(region);
+        return;
+      }
+      case "mvpnote": {
+        const text = clean(a.text, 60);
+        if (!text) return;
+        if (state.mvpNotes.length >= MVP_NOTES_MAX) return;
+        state.mvpNotes.push({ id: uid(), text, by, at: Date.now() });
+        note(region, `MVP comms: "${text}" — ${by}`);
+        persist();
+        io.emit("mvpnotes", state.mvpNotes);
+        broadcast(region);
+        return;
+      }
+      case "mvpnote-clear": {
+        const id = clean(a.id, 40);
+        const i = state.mvpNotes.findIndex(n => n.id === id);
+        if (i === -1) return;
+        const [gone] = state.mvpNotes.splice(i, 1);
+        note(region, `MVP comms cleared: "${gone.text}" — by ${by}`);
+        persist();
+        io.emit("mvpnotes", state.mvpNotes);
         broadcast(region);
         return;
       }
