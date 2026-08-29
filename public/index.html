@@ -1062,7 +1062,10 @@
   .notice.open .notice-chev svg{transform:rotate(-90deg)}
   .notice-body{
     display:none;padding:0 14px 13px 38px;
-    font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;
+    font-size:13px;line-height:1.65;color:var(--text);white-space:pre-wrap;
+    /* a long patch note scrolls inside the banner rather than pushing the
+       whole board off the bottom of the screen */
+    max-height:min(46vh,380px);overflow-y:auto;scrollbar-width:thin;
   }
   .notice.open .notice-body{display:block}
   .notice-by{display:block;margin-top:8px;font-size:10.5px;color:var(--dim)}
@@ -4162,7 +4165,10 @@ document.getElementById("benchAdd").onclick = () => {
     toast("“Guest” isn't a name — pick something people will recognise", true);
     return;
   }
-  // this is where your name comes from: whatever you last added is who you are
+  /* Your name comes from whatever you last added. Set it now so the board
+     reads right straight away, but remember what it was — if the server turns
+     the add down because somebody already has that name, it goes back. */
+  pendingAdd = { name, was: me };
   setMe(name);
   send({ type:"person-add", name, token: myToken });
   // it's yours from the moment you add it, so remember it locally too
@@ -4716,6 +4722,17 @@ sayInput.addEventListener("keydown", e => {
    just reports it; it is not a second place to set it. */
 const whoBtn = document.getElementById("whoBtn");
 
+/* Put a name on with no checks — used to undo an optimistic change when the
+   server turns the add down. */
+function applyMe(next, old){
+  me = next;
+  try { localStorage.setItem("ct:name", me) } catch(e){}
+  renameMyChips(old);
+  tellListening();
+  tellWho();
+  paintWho();
+}
+
 function setMe(v){
   const next = String(v || "").trim().slice(0, 24);
   if(!next || isGuest(next)) return false;
@@ -4781,7 +4798,9 @@ function paintNotice(){
   noticeEl.hidden = !has;
   if(!has) return;
 
-  document.getElementById("noticePeek").textContent = notice.text;
+  // folded, only the first line is shown; the rest is what opening it is for
+  document.getElementById("noticePeek").textContent =
+    String(notice.text).split("\n")[0];
   const body = document.getElementById("noticeBody");
   body.textContent = notice.text;
   if(notice.by){
@@ -4802,6 +4821,28 @@ document.getElementById("noticeHead").onclick = () => {
     try { localStorage.setItem("ct:noticeseen", noticeSeen) } catch(e){}
   }
 };
+
+/* The add did not go through. Undo the optimistic rename and say why, rather
+   than leaving somebody with a name that looks like theirs but is not. */
+let pendingAdd = null;
+socket.on("addfail", info => {
+  const nm = (info && info.name) || "";
+  const wasOurs = pendingAdd && pendingAdd.name.toLowerCase() === nm.toLowerCase();
+  if(wasOurs && !(info && info.mine)){
+    applyMe(pendingAdd.was, me);          // back to whatever you were called
+  }
+  pendingAdd = null;
+
+  if(info && info.full){
+    toast("The people list is full — remove somebody before adding another.", true);
+  } else if(info && info.mine){
+    toast("\u201c" + nm + "\u201d is already yours — it is in the list above.", true);
+  } else {
+    toast("\u201c" + nm + "\u201d is already taken"
+      + (info && info.by ? ", added by " + info.by : "")
+      + ". Pick something else.", true);
+  }
+});
 
 socket.on("notice", n => {
   notice = (n && typeof n === "object") ? n : { text:"", by:"", at:0 };

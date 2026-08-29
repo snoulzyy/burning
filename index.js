@@ -170,6 +170,15 @@ function joinClock(chan) {
   return ats.length ? Math.min.apply(null, ats) : Date.now();
 }
 const clean = (s, n) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n);
+/* Same, but keeps the line breaks. clean() flattens all whitespace to single
+   spaces, which turns a patch note into one long paragraph — fine for a name,
+   useless for something written in sections. */
+const cleanLines = (s, n) => String(s == null ? "" : s)
+  .replace(/\r\n?/g, "\n")
+  .replace(/[ \t]+/g, " ")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim()
+  .slice(0, n);
 // "Guest" is the placeholder a new browser starts on. The client will not let
 // you act under it, and this is the other half of that: a tab left open from
 // before, or anything talking to the socket directly, gets the same answer.
@@ -322,6 +331,23 @@ function adminPage() {
       </td>
     </tr>`).join("");
 
+  /* Every name on every board, with a way to take it off.
+     Normally a name can only be removed by the browser that added it — which
+     is right, but leaves nothing to do when somebody clears their cookies and
+     locks themselves out of their own name. This is the way round that. */
+  const peopleRows = Object.keys(state.rosters).sort().map(area =>
+    (state.rosters[area] || []).map(p => {
+      const at = liftLook(p.id, area);
+      return `<tr>
+        <td>${esc(p.name)}</td>
+        <td class="dim">${esc(area)}</td>
+        <td class="dim">${esc(p.claimedName || "—")}</td>
+        <td class="dim">${at ? esc(at.region + " " + ch(at.idx)) : "—"}</td>
+        <td><a class="btn" href="?drop=${encodeURIComponent(p.id)}&area=${encodeURIComponent(area)}">remove</a></td>
+      </tr>`;
+    }).join("")
+  ).join("");
+
   const banRows = Object.keys(state.bans.ids).map(id => {
     const b = state.bans.ids[id];
     return `<tr><td>${esc((b && b.name) || "—")}</td><td class="dim mono">${esc(id.slice(0, 10))}</td>
@@ -389,7 +415,7 @@ function adminPage() {
 </style>
 <h2>ANNOUNCEMENT</h2>
 <form class="say" method="GET">
-  <textarea name="notice" maxlength="240" placeholder="Shown to everyone at the top of the board. Leave empty and press clear to take it down.">${esc(n.text || "")}</textarea>
+  <textarea name="notice" maxlength="${NOTICE_MAX}" placeholder="Shown to everyone at the top of the board. Leave empty and press clear to take it down.">${esc(n.text || "")}</textarea>
   <p class="pv-label">HOW IT WILL LOOK</p>
   <div class="pv" id="pv">
     <div class="pv-top">
@@ -433,6 +459,11 @@ function adminPage() {
 </script>
 ${rows ? `<table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table>`
        : `<p class="none">Nobody yet.</p>`}
+<h2 class="two">PEOPLE ON THE BOARDS</h2>
+${peopleRows
+  ? `<table><tr><th>name</th><th>area</th><th>added by</th><th>on</th><th></th></tr>${peopleRows}</table>`
+  : `<p class="none">Nobody added yet.</p>`}
+
 <h2 class="two">BANNED</h2>
 ${banRows ? `<table><tr><th>name</th><th>what</th><th>kind</th><th>when</th><th></th></tr>${banRows}</table>`
           : `<p class="none">Nobody.</p>`}`;
@@ -454,12 +485,27 @@ if (ADMIN_KEY) {
       state.bans.ips[q.banip] = { at: Date.now(), name: (owner && owner.name) || "" };
       changed = true;
     }
+    // take a name off regardless of who claimed it
+    if (q.drop && q.area) {
+      const list = state.rosters[q.area];
+      const p = list && list.find(x => x.id === q.drop);
+      if (p) {
+        liftPerson(p.id, q.area);
+        state.rosters[q.area] = list.filter(x => x.id !== p.id);
+        regionsIn(q.area).forEach(r => {
+          note(r, `${p.name} removed from the people list`);
+          broadcast(r);
+        });
+        broadcastRoster();
+        changed = true;
+      }
+    }
     if (q.unban)   { delete state.bans.ids[q.unban];   changed = true; }
     if (q.unbanip) { delete state.bans.ips[q.unbanip]; changed = true; }
 
     // the announcement everyone sees at the top of the board
     if (q.post) {
-      const text = clean(q.notice, 240);
+      const text = cleanLines(q.notice, NOTICE_MAX);
       state.notice = text ? { text, by: "admin", at: Date.now() } : { text: "", by: "", at: 0 };
       live.forEach(r => note(r, text ? "announcement posted" : "announcement cleared"));
       broadcastNotice();
@@ -826,6 +872,8 @@ function scheduleAllDrops() {
    along — generously late, since a length that is short by a few seconds
    should not clip anything. */
 const END_GRACE = 20000;
+// long enough for a proper patch note, with the line breaks kept
+const NOTICE_MAX = 2000;
 
 function scheduleSongEnd() {
   clearTimeout(songHandle);
@@ -860,6 +908,17 @@ function findPerson(id, area) {
   return (state.rosters[area] || []).find(p => p.id === id);
 }
 // pull someone off whatever channel they're on, within their own area
+// where somebody is, without moving them
+function liftLook(pid, area) {
+  let at = null;
+  regionsIn(area).forEach(r => {
+    state[r].channels.forEach((c, idx) => {
+      if (c.entries.some(e => e.pid === pid)) at = { region: r, idx };
+    });
+  });
+  return at;
+}
+
 function liftPerson(pid, area) {
   let from = null;
   regionsIn(area).forEach(r => {
@@ -1341,7 +1400,7 @@ io.on("connection", socket => {
         return;
       }
       case "notice": {
-        const text = clean(a.text, 240);
+        const text = cleanLines(a.text, NOTICE_MAX);
         state.notice = text
           ? { text, by, at: Date.now() }
           : { text: "", by: "", at: 0 };
@@ -1358,8 +1417,25 @@ io.on("connection", socket => {
         const token = clean(a.token, 64);
         if (!list || !name || !token) return;
         if (name.toLowerCase() === "guest") return;   // guests stay guests
-        if (list.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-        if (list.length >= 200) return;
+        /* Already on the board? Say so.
+           This used to just drop the request in silence, which left the person
+           thinking they had added it — their display name had already changed
+           to match — while the entry itself belonged to whoever got there
+           first. That is why a name could look like yours and still refuse to
+           be deleted. */
+        const clash = list.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (clash) {
+          socket.emit("addfail", {
+            name,
+            by: clash.claimedName || "",
+            mine: !!clash.claimedBy && clash.claimedBy === token
+          });
+          return;
+        }
+        if (list.length >= 200) {
+          socket.emit("addfail", { name, full: true });
+          return;
+        }
         // whoever adds a name owns it straight away
         list.push({ id: uid(), name, color: null, color2: null, color3: null, claimedBy: token, claimedName: by });
         list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
