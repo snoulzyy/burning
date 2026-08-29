@@ -256,10 +256,61 @@ const since = t => {
 };
 
 function adminPage() {
-  const seen = Object.values(state.seen).sort((a, b) => (b.last || 0) - (a.last || 0));
+  const all = Object.values(state.seen).sort((a, b) => (b.last || 0) - (a.last || 0));
+
+  /* Fold the nameless ones together by address.
+     A row with no name is not much use on its own — several of them from the
+     same address are almost certainly one person whose cookie changed, or who
+     opened the site before ids were handed out. Named rows stay separate,
+     since two people really can share an address and the name is what tells
+     them apart. */
+  const seen = [];
+  const anonByIp = new Map();
+  all.forEach(v => {
+    if (v.name || !v.ip) { seen.push(v); return; }
+    const had = anonByIp.get(v.ip);
+    if (!had) {
+      const row = Object.assign({}, v, { browsers: 1 });
+      anonByIp.set(v.ip, row);
+      seen.push(row);
+      return;
+    }
+    had.browsers += 1;
+    had.acts = (had.acts || 0) + (v.acts || 0);
+    had.first = Math.min(had.first || v.first, v.first || had.first);
+    // names either of them has ever used still count
+    (v.names || []).forEach(n => {
+      had.names = had.names || [];
+      if (had.names.indexOf(n) === -1) had.names.push(n);
+    });
+  });
   const n = state.notice || { text: "" };
+  /* Who a blank row belongs to.
+     A row is only blank when that browser has never sent a name at all, so the
+     question is whether the person behind it has ever had one. The only thing
+     linking them is the address: if somebody named has been on the same one,
+     this is very likely them on a second browser, a cleared cache or a private
+     window. Said as a maybe, because an address can be shared. */
+  const namedAtIp = new Map();
+  all.forEach(v => {
+    if (!v.name || !v.ip) return;
+    if (!namedAtIp.has(v.ip)) namedAtIp.set(v.ip, new Set());
+    namedAtIp.get(v.ip).add(v.name);
+  });
+
+  const who = v => {
+    if (v.name) return esc(v.name);
+    const past = (v.names || []).filter(Boolean);
+    if (past.length) return `<span class="past">was ${esc(past.join(", "))}</span>`;
+    const sameIp = v.ip && namedAtIp.get(v.ip);
+    if (sameIp && sameIp.size) {
+      return `<span class="past">no name — same address as ${esc([...sameIp].join(", "))}</span>`;
+    }
+    return `<span class="never">never named</span>`;
+  };
+
   const rows = seen.map(v => `<tr>
-      <td>${esc(v.name || "—")}</td>
+      <td>${who(v)}${v.browsers > 1 ? `<span class="dim"> · ${v.browsers} browsers</span>` : ""}</td>
       <td class="dim">${esc(v.ip || "—")}</td>
       <td class="dim">${esc(since(v.last))}</td>
       <td class="dim">${v.acts || 0}</td>
@@ -331,6 +382,10 @@ function adminPage() {
   .btn:hover{color:#f87171;border-color:#f87171}
   .none{color:#5f7285;padding:10px 0}
   .pend{color:#eab308}
+  /* has been on the site but has never chosen a name */
+  .never{color:#5f7285;font-style:italic}
+  /* has had one before, just is not using it now */
+  .past{color:#eab308}
 </style>
 <h2>ANNOUNCEMENT</h2>
 <form class="say" method="GET">
@@ -470,11 +525,20 @@ function noteSeen(id, ip, name) {
   const key = id || (ip ? "ip:" + ip : "");
   if (!key) return;
   const now = Date.now();
-  const was = state.seen[key] || { id: key, noCookie: !id, first: now, acts: 0 };
+  const was = state.seen[key] || { id: key, noCookie: !id, first: now, acts: 0, names: [] };
   if (id) was.noCookie = false;
+  if (!Array.isArray(was.names)) was.names = [];
   was.last = now;
   if (ip) was.ip = ip;
-  if (name && !nameless(name)) was.name = name;
+  if (name && !nameless(name)) {
+    was.name = name;
+    // every name this browser has gone by, so a blank row can say whether they
+    // never picked one or simply are not using it right now
+    if (was.names.indexOf(name) === -1) {
+      was.names.push(name);
+      if (was.names.length > 5) was.names.shift();
+    }
+  }
   state.seen[key] = was;
   // keep the newest few hundred, so this cannot grow without limit
   const keys = Object.keys(state.seen);
