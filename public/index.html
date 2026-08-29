@@ -1124,6 +1124,41 @@
   .comms-add:hover{background:rgba(245,158,11,.12)}
   .comms-add .cplus{font-size:16px;line-height:1}
 
+  /* ---------------- are you sure ----------------
+     The MVP button alarms everyone on the site with a sound, so somebody
+     trying it out to see what it does is worth one question. */
+  .askwrap{
+    position:fixed;inset:0;z-index:130;display:grid;place-items:center;
+    background:rgba(4,8,13,.72);
+  }
+  .askbox{
+    width:min(400px,calc(100vw - 32px));padding:20px;border-radius:14px;
+    background:#0d131c;border:1px solid rgba(248,113,113,.5);
+    box-shadow:0 26px 60px rgba(0,0,0,.75);
+  }
+  .askbox h4{
+    margin:0 0 10px;font:inherit;font-size:12px;font-weight:800;
+    letter-spacing:.16em;color:var(--red);
+  }
+  .askbox p{margin:0 0 8px;font-size:13.5px;line-height:1.6;color:var(--text)}
+  .askbox .sub{font-size:12px;color:var(--dim);line-height:1.55}
+  .askagain{
+    display:flex;align-items:center;gap:8px;margin:15px 0 0;
+    font-size:12px;color:var(--dim);cursor:pointer;user-select:none;
+  }
+  .askagain input{width:14px;height:14px;accent-color:var(--cyan);cursor:pointer}
+  .askrow{display:flex;gap:9px;margin-top:16px}
+  .askrow button{
+    flex:1;font:inherit;font-size:13px;font-weight:700;padding:10px;
+    border-radius:9px;cursor:pointer;
+  }
+  .ask-no{color:var(--dim);background:none;border:1px solid var(--line)}
+  .ask-no:hover{color:var(--text);border-color:#2d3f52}
+  .ask-yes{
+    color:#fff;background:rgba(248,113,113,.22);border:1px solid rgba(248,113,113,.75);
+  }
+  .ask-yes:hover{background:rgba(248,113,113,.34)}
+
   /* ---------------- mvp popup ---------------- */
   .mvp-pop{
     position:fixed;inset:0;z-index:120;display:grid;place-items:center;
@@ -2536,7 +2571,7 @@ const HELP_HTML = `
   <p>Falls <span class="k">10% every 15 minutes</span> while people are on it, counting only
      drops since anyone last set it. Empty, it climbs <span class="k">10% an hour</span>.
      Frozen <span class="k">22:00–08:00 UTC</span> — the climb only, it still falls.</p>
-  <p>The bar under a full channel opens <span class="k">PROJECTED BURNS</span>. A channel
+  <p>The bar under a full channel opens <span class="k">PROJECTED BURNS</span> — a channel
      with room for your whole group ranks above a higher burning one.</p>
 
   <h5>PLAYERS BOX</h5>
@@ -2546,8 +2581,8 @@ const HELP_HTML = `
      Nothing applies until you press apply.</p>
 
   <h5>MUSIC</h5>
-  <p>Paste a YouTube link. Everyone hears the same moment — pause, skip and scrubbing carry
-     to the room.</p>
+  <p>Paste a YouTube link. Everyone hears the same moment; only whoever queued a song can
+     skip it.</p>
   <p><span class="k">listen</span> turns your sound on, <span class="k">size</span> steps the
      box, and its header drags. <span class="k">video wallpaper</span> puts the video behind
      the page.</p>
@@ -2555,12 +2590,11 @@ const HELP_HTML = `
      theirs off.</p>
 
   <h5>MVP</h5>
-  <p><span class="k">MVP</span> alarms everyone on a channel. Right-click to write your own
-     message — <code>*stars*</code> make text bold.</p>
+  <p><span class="k">MVP</span> alarms everyone on a channel — it asks first, and you can
+     turn that off. Right-click to write your own message; <code>*stars*</code> bold it.</p>
   <p><span class="k">mvp comms</span> opens a list of what is up and where, like
      <code>ch18 zak xx:00/30 1/4</code>. They stay until someone clears them.</p>
-  <p><span class="k">29:30</span> is started by hand, and shakes for a minute after an MVP
-     call to remind you.</p>
+  <p><span class="k">29:30</span> is started by hand, and shakes for a minute after a call.</p>
 
   <h5>40 MINUTE ALERT</h5>
   <p><span class="k">B1</span>, <span class="k">RD1</span> and <span class="k">RD4</span>
@@ -4825,6 +4859,11 @@ document.getElementById("noticeHead").onclick = () => {
 /* The add did not go through. Undo the optimistic rename and say why, rather
    than leaving somebody with a name that looks like theirs but is not. */
 let pendingAdd = null;
+/* Somebody tried to skip a song that is not theirs. */
+socket.on("skipdenied", info => {
+  toast("Only " + ((info && info.by) || "whoever queued it") + " can skip this one.", true);
+});
+
 socket.on("addfail", info => {
   const nm = (info && info.name) || "";
   const wasOurs = pendingAdd && pendingAdd.name.toLowerCase() === nm.toLowerCase();
@@ -5053,12 +5092,88 @@ mvpTimerReset.onclick = () => {
 };
 paintMvpTimer();
 
-mvpBtn.onclick = () => {
-  if(!needName("Add yourself in Players before calling MVP — everyone gets alarmed, so they should know who did it.")) return;
+function fireMvp(){
   primeAudio();
   socket.emit("mvp", { by: me });
   mvpBtn.classList.add("fired");
   setTimeout(() => mvpBtn.classList.remove("fired"), 900);
+}
+
+/* One question before the alarm goes off.
+   It makes a noise on every screen that has somebody on a channel, so a new
+   person pressing it to find out what it does is worth catching. Anyone who
+   uses it properly can turn the question off and never see it again. */
+let askMvp = true;
+try { askMvp = localStorage.getItem("ct:mvpask") !== "0" } catch(e){}
+
+let askEl = null;
+function closeAsk(){
+  if(askEl){ askEl.remove(); askEl = null; }
+  document.removeEventListener("keydown", askKey, true);
+}
+function askKey(e){
+  if(e.key === "Escape"){ e.preventDefault(); closeAsk(); }
+}
+
+function confirmMvp(){
+  closeAsk();
+  const wrap = document.createElement("div");
+  wrap.className = "askwrap";
+  wrap.onclick = e => { if(e.target === wrap) closeAsk(); };
+
+  const box = document.createElement("div");
+  box.className = "askbox";
+  box.onclick = e => e.stopPropagation();
+
+  const h = document.createElement("h4");
+  h.textContent = "CALL MVP?";
+
+  const p1 = document.createElement("p");
+  p1.textContent = "This alarms everyone on the site who is on a channel — a sound and a popup on their screen.";
+
+  const p2 = document.createElement("p");
+  p2.className = "sub";
+  p2.textContent = "Not sure what it does? Have a read in the gear icon first.";
+
+  const lab = document.createElement("label");
+  lab.className = "askagain";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  const cbt = document.createElement("span");
+  cbt.textContent = "Don't ask me again";
+  lab.append(cb, cbt);
+
+  const row = document.createElement("div");
+  row.className = "askrow";
+  const no = document.createElement("button");
+  no.className = "ask-no";
+  no.textContent = "Cancel";
+  no.onclick = closeAsk;
+  const yes = document.createElement("button");
+  yes.className = "ask-yes";
+  yes.textContent = "Yes, call it";
+  yes.onclick = () => {
+    if(cb.checked){
+      askMvp = false;
+      try { localStorage.setItem("ct:mvpask", "0") } catch(e){}
+    }
+    closeAsk();
+    fireMvp();
+  };
+  row.append(no, yes);
+
+  box.append(h, p1, p2, lab, row);
+  wrap.appendChild(box);
+  document.body.appendChild(wrap);
+  askEl = wrap;
+  document.addEventListener("keydown", askKey, true);
+  yes.focus();
+}
+
+mvpBtn.onclick = () => {
+  if(!needName("Add yourself in Players before calling MVP — everyone gets alarmed, so they should know who did it.")) return;
+  if(askMvp){ confirmMvp(); return; }
+  fireMvp();
 };
 paintMvpTitle();
 
@@ -5946,13 +6061,20 @@ function ensurePlayer(){
         }
       },
       onError: () => {
-        // one clean rebuild, then move on rather than sitting on a dead player
+        /* Your player broke — that is about your browser, not the song.
+           This used to give up after five seconds and tell the server the song
+           had ended, which ended it for the whole room. So one person joining
+           with an ad blocker, or a video their region will not play, or
+           autoplay refused, killed the music for everybody. They had pressed
+           nothing. One quiet rebuild, and if it still will not go, say so to
+           the person it happened to and leave everyone else alone. */
         const cur = music.playing;
         killPlayer();
         if(listening) setTimeout(() => { ensurePlayer(); syncPlayer(); }, 500);
         if(cur) setTimeout(() => {
           if(music.playing && music.playing.id === cur.id && ytWanted !== cur.id){
-            musicAction({ type:"music-ended", id: cur.id });
+            toast("This song will not play in your browser — everyone else is fine. "
+              + "An ad blocker or the video's own settings usually explain it.", true);
           }
         }, 5000);
       }

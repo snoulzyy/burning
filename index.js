@@ -1219,7 +1219,16 @@ io.on("connection", socket => {
         return;
       }
       case "music-skip": {
-        if (!state.music.playing) return;
+        const cur = state.music.playing;
+        if (!cur) return;
+        const token = clean(a.token, 64);
+        /* Only whoever queued it. Skipping used to be open to anyone, which is
+           the same hole the queue's remove button already closed — and it made
+           songs vanish with no way to tell who did it. */
+        if (cur.token && cur.token !== token) {
+          socket.emit("skipdenied", { by: cur.by || "" });
+          return;
+        }
         musicNote(`${by} skipped a song`);
         startNext();
         persist();
@@ -1319,7 +1328,22 @@ io.on("connection", socket => {
       }
       case "music-ended": {
         // whichever listener finishes first moves it along; the rest are ignored
-        if (!state.music.playing || state.music.playing.id !== a.id) return;
+        const cur = state.music.playing;
+        if (!cur || cur.id !== a.id) return;
+        /* A player claiming a song ended long before its length is a broken
+           player, not a finished song — an ad blocker, a video the region will
+           not serve, autoplay refused. One person's browser giving up used to
+           end the song for the whole room, and this is the backstop for the
+           tabs still out there that do it. Judged on the clock rather than on
+           who sent it, so it holds however the message arrives. */
+        const played = (Date.now() - cur.startedAt) / 1000;
+        if (cur.duration) {
+          if (played < cur.duration - 10) return;
+        } else if (played < 30) {
+          // length not known yet, so fall back on how long it has been going.
+          // a browser giving up seconds after joining is the case being caught.
+          return;
+        }
         startNext();
         persist();
         broadcastMusic();
