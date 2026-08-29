@@ -416,8 +416,16 @@ function pruneListeners() {
 
 function listenersView() {
   pruneListeners();
-  const list = [...listeners.entries()]
-    .map(([id, name]) => ({ id, name: name || "someone" }))
+  /* Folded on the browser, like the watching count. Somebody with the queue
+     open in two tabs is one person listening, not two — and turning it off for
+     them stops every tab they have, which is what "off" ought to mean. */
+  const seen = new Map();            // browser id -> the socket that speaks for it
+  listeners.forEach((name, sockId) => {
+    const w = watchers.get(sockId);
+    const key = (w && w.id) || sockId;
+    if (!seen.has(key)) seen.set(key, { id: sockId, key, name: name || "someone" });
+  });
+  const list = [...seen.values()]
     .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
   return { n: list.length, who: list.map(x => x.name), list };
 }
@@ -680,11 +688,29 @@ function liftPerson(pid, area) {
   return from;
 }
 // who is on the site at all, by socket, so the counter can name them
-const watchers = new Map();          // socket.id -> display name
+/* One person, however many tabs.
+   Two tabs are two sockets, so counting sockets counted the same person twice.
+   Everything here is folded on the browser id from the cookie first — a tab
+   with no cookie yet falls back to its own socket, which is the honest answer
+   when there is nothing better to go on. */
+const watchers = new Map();          // socket.id -> { id, name }
+
+function foldByBrowser(map) {
+  const out = new Map();             // browser id -> name
+  map.forEach((v, sockId) => {
+    const key = (v && v.id) || sockId;
+    const name = (v && v.name) || "";
+    // a named tab beats a nameless one for the same person
+    if (!out.has(key) || (!out.get(key) && name)) out.set(key, name);
+  });
+  return out;
+}
+
 function presence() {
-  const who = [...watchers.values()].filter(Boolean);
+  const folded = foldByBrowser(watchers);
+  const who = [...folded.values()].filter(Boolean);
   who.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  io.emit("presence", { n: online, who });
+  io.emit("presence", { n: folded.size, who });
 }
 
 io.on("connection", socket => {
@@ -708,7 +734,7 @@ io.on("connection", socket => {
     // subscribe to all of them, so switching tabs needs no round trip
     live.forEach(x => socket.join(x));
     if (!viewing) online++;          // count the person once, not once per tab switch
-    if (!watchers.has(socket.id)) watchers.set(socket.id, "");
+    if (!watchers.has(socket.id)) watchers.set(socket.id, { id: browserId, name: "" });
     viewing = id;
 
     socket.emit("hello", { region: id, regions: REGIONS, cap: CAP, channels: CHANNELS, build: BUILD });
@@ -1269,8 +1295,9 @@ io.on("connection", socket => {
     const who = clean(n, 24);
     noteSeen(browserId, ip, who);
     const next = nameless(who) ? "" : who;
-    if (watchers.get(socket.id) === next) return;
-    watchers.set(socket.id, next);
+    const had = watchers.get(socket.id);
+    if (had && had.name === next) return;
+    watchers.set(socket.id, { id: browserId, name: next });
     presence();
   });
 
@@ -1294,11 +1321,21 @@ io.on("connection", socket => {
     const target = clean(id, 40);
     if (!listeners.has(target)) return;
     const who = listeners.get(target) || "someone";
-    const by = watchers.get(socket.id) || "someone";
+    const mine = watchers.get(socket.id);
+    const by = (mine && mine.name) || "";
     if (nameless(by)) return;
-    listeners.delete(target);
-    const sock = io.sockets.sockets.get(target);
-    if (sock) sock.emit("unlisten", { by });     // their player stops itself
+
+    // every tab that person has, not just the one that happened to be listed
+    const owner = watchers.get(target);
+    const ownerId = owner && owner.id;
+    [...listeners.keys()].forEach(sockId => {
+      const w = watchers.get(sockId);
+      const same = sockId === target || (ownerId && w && w.id === ownerId);
+      if (!same) return;
+      listeners.delete(sockId);
+      const sock = io.sockets.sockets.get(sockId);
+      if (sock) sock.emit("unlisten", { by });   // their player stops itself
+    });
     musicNote(`${by} turned the music off for ${who}`);
     broadcastListeners();
   });
