@@ -196,9 +196,8 @@
     /* the board picker rides along underneath, so it is always in reach */
     .headright .tabsWrap{
       position:fixed;top:var(--benchH,0px);left:0;right:0;z-index:69;
-      padding:0;background:rgba(6,11,17,.92);
-      backdrop-filter:blur(14px) saturate(1.2);
-      -webkit-backdrop-filter:blur(14px) saturate(1.2);
+      padding:0;background:rgba(6,11,17,calc(var(--glass) + .12));
+      /* see-through, like everything else over the board */
       border-bottom:1px solid var(--line);
       box-shadow:0 8px 18px rgba(0,0,0,.5);
     }
@@ -811,7 +810,7 @@
     max-height:calc(100vh - 28px);
     max-height:calc(100dvh - 28px);
     display:flex;flex-direction:column;
-    background:rgba(10,17,25,.97);backdrop-filter:blur(12px);
+    background:rgba(10,17,25,.97);
     border:1px solid rgba(34,211,238,.35);border-radius:14px;overflow:hidden;
     box-shadow:0 24px 60px rgba(0,0,0,.7);
   }
@@ -1414,20 +1413,11 @@
 
   /* ---------- glass, only once a background is behind it ---------- */
   /* glass without per-card blur — forty blurred cards is what made scrolling stutter */
-  /* One frosted sheet behind the whole board rather than forty of them.
-     backdrop-filter is expensive, and a blur per card would be forty separate
-     passes every frame — on a phone that is the difference between smooth and
-     not. A single pane underneath reads the same and costs one. */
-  html.has-bg .board-side{
-    position:relative;border-radius:14px;
-  }
-  html.has-bg .board-side::before{
-    content:"";position:absolute;inset:-8px;z-index:-1;border-radius:16px;
-    background:rgba(8,14,21,.34);
-    backdrop-filter:blur(18px) saturate(1.15);
-    -webkit-backdrop-filter:blur(18px) saturate(1.15);
-    pointer-events:none;
-  }
+  /* No blur behind the board. There was one here, added to help legibility,
+     and it defeated the whole point: it smeared the video into mush before the
+     cards ever got a chance to be see-through. The cards do their own work now
+     — a light tint, a brighter edge, and a halo on the text. */
+  html.has-bg .board-side{position:relative}
   html.has-bg .ch{
     background:linear-gradient(180deg,rgba(12,20,29,var(--card-glass)),rgba(10,17,25,calc(var(--card-glass) + .05)));
     /* a brighter edge, since the fill is no longer doing the work of
@@ -1439,23 +1429,21 @@
   html.has-bg .ch:hover{border-color:rgba(140,190,230,.3)}
   /* the names stay a touch more solid than the card behind them, so they are
      still readable when a busy part of the picture lands underneath */
-  html.has-bg .row{background:rgba(12,20,29,calc(var(--card-glass) + .22))}
+  html.has-bg .row{background:rgba(12,20,29,calc(var(--card-glass) + .18))}
   html.has-bg .row.tinted{background-color:rgba(12,20,29,calc(var(--card-glass) + .22))}
 
-  /* the bench is sticky — blurring it would re-render on every scroll frame */
+  /* Tinted glass, not frosted. No backdrop blur anywhere over the board: the
+     point is to see what is behind, and a blur turns a video into a smear.
+     Legibility comes from the tint, a brighter edge and the halo on the text. */
   html.has-bg .bench{
-    background:rgba(10,17,25,calc(var(--glass) + .14));
-    backdrop-filter:blur(16px) saturate(1.2);
-    -webkit-backdrop-filter:blur(16px) saturate(1.2);
-    border-color:rgba(140,175,215,.2);
+    background:rgba(10,17,25,calc(var(--glass) + .06));
+    border-color:rgba(150,190,230,.3);
   }
   html.has-bg .chat,
   html.has-bg .tabs,
   html.has-bg .logo{
-    background:rgba(10,17,25,calc(var(--glass) + .08));
-    backdrop-filter:blur(16px) saturate(1.2);
-    -webkit-backdrop-filter:blur(16px) saturate(1.2);
-    border-color:rgba(120,160,200,.18);
+    background:rgba(10,17,25,var(--glass));
+    border-color:rgba(150,190,230,.28);
   }
   html.has-bg .say{background:rgba(9,15,22,calc(var(--glass) + .12))}
   /* a faint dark halo so letters keep their edges over a busy picture */
@@ -2403,6 +2391,8 @@ function messageNodes(text){
 const HELP_HTML = `
   <p><span class="k">New here?</span> Press <span class="k">+ add</span> in the Players box
      and put your name in. Nothing works until you do.</p>
+  <p><span class="k">Want a colour like everyone else?</span> Click the round
+     <span class="k">●</span> next to your name in that box.</p>
 
   <h5>CHANNELS</h5>
   <p><span class="k">+</span> adds someone. The <span class="k">%</span> badge sets burning.
@@ -2448,7 +2438,7 @@ const HELP_HTML = `
 
   <h5>THE REST</h5>
   <p>Boards share their area's Players list and one chat. Filters and search narrow the grid.
-     Hide tabs with the <span class="k">›</span> at the end of the row.</p>
+     Hide unused tabs with the <span class="k">›</span>.</p>
   <p>On a phone the Players box and tabs stay pinned, and <span class="k">jump to me</span>
      finds your channel. Everything is logged with a name. The gear holds background, alert
      sound and the projection rules.</p>
