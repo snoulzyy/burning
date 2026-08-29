@@ -31,7 +31,7 @@
        them covering most of the page, so they are what decides how much of
        your background you actually see. the frosted sheet behind the board
        and the halo on the text are what let them go this light. */
-    --card-glass:.3;
+    --card-glass:.16;
   }
   *{box-sizing:border-box}
   html,body{margin:0;min-height:100%}
@@ -2401,104 +2401,57 @@ function messageNodes(text){
 
 /* ---------------- help panel ---------------- */
 const HELP_HTML = `
-  <h5>ADDING PEOPLE</h5>
-  <p><span class="k">+</span> on any channel, type a name, press Enter. Four per channel.</p>
-  <p>Or from the chat box below: <code>12 weenie</code> puts weenie on CH 12.
-     <code>ch12 weenie</code> works too.</p>
-  <p>If that person is already on another channel, they get moved — no duplicates.</p>
+  <p><span class="k">New here?</span> Press <span class="k">+ add</span> in the Players box
+     and put your name in. Nothing works until you do.</p>
 
-  <h5>BURNING %</h5>
-  <p>Click the percentage badge and pick from the grid.</p>
-  <p>Or type it: <code>12 70%</code> sets CH 12 to 70%. The <code>%</code> is optional.</p>
-  <p>The amber note next to it shows how long ago it was last changed.</p>
+  <h5>CHANNELS</h5>
+  <p><span class="k">+</span> adds someone. The <span class="k">%</span> badge sets burning.
+     The clock icon fixes how long it has really been going.</p>
+  <p>Drag a name to move them, or the <span class="k">⋮⋮</span> grip to move the group.
+     Onto an empty channel it moves, onto a full one it swaps.</p>
+  <p>Join a channel already going and you take its timer.</p>
 
-  <h5>MOVING PEOPLE</h5>
-  <p>Drag a name onto another channel. Drag the <span class="k">⋮⋮</span> grip to move
-     everyone on that channel at once.</p>
-  <p>On a phone: tap a name, then tap the channel you want it on.</p>
-  <p>Either way, their timer restarts.</p>
+  <h5>BURNING</h5>
+  <p>Set what you see. The board does the sums.</p>
+  <p>Falls <span class="k">10% every 15 minutes</span> while people are on it, counting only
+     drops since anyone last set it. Empty, it climbs <span class="k">10% an hour</span>.
+     Frozen <span class="k">22:00–08:00 UTC</span> — the climb only, it still falls.</p>
+  <p>The bar under a full channel opens <span class="k">PROJECTED BURNS</span>: where to go
+     next. A channel with room for your whole group ranks above a higher burning one.</p>
 
-  <h5>THE REST OF THE ROW</h5>
-  <p><span class="k">✎</span> rename &nbsp;·&nbsp; <span class="k">✕</span> remove
-     &nbsp;·&nbsp; click the timer to reset it.</p>
-
-  <h5>THE PEOPLE BOX</h5>
-  <p>Add everyone once at the top. Click a name then click a channel to put them on —
-     no typing. Take them off a channel and they drop back into the box by themselves.</p>
-  <p>Optional. Never add yourself if you'd rather not — typing names straight onto a
-     channel works exactly as before, and guests are never listed up there.</p>
-  <p>Hit the little person icon on your own name to mark it as you. Do that and the
-     40 minute alert follows <em>you</em>, even if someone spells your name differently
-     or renames you later.</p>
-
-  <h5>FIXING THE CLOCK</h5>
-  <p>Moved a group and the timer restarted, but the channel had really been going
-     40 minutes? Hit the amber clock on the channel and set the true duration.
-     It applies to everyone on that channel at once.</p>
+  <h5>PLAYERS BOX</h5>
+  <p>Names you add are yours to rename, recolour and remove. Click one then click a channel,
+     or drag it across.</p>
+  <p>Click the <span class="k">dot</span> for colours — up to three, blended.
+     <span class="k">FILL FROM THE FIRST</span> builds a set from one; the slider widens it.
+     Nothing applies until you press apply.</p>
 
   <h5>MUSIC</h5>
-  <p>The <span class="k">♪ music</span> button opens a shared queue — paste a YouTube link
-     and it joins the line for everyone. You can only remove songs you queued yourself.</p>
-  <p>Hearing it is opt-in: nothing plays until you press <span class="k">listen: on</span>
-     in the drawer, and that choice is yours alone. Once it's on, playback carries on while
-     you're on another tab or in game, and everyone listening is at roughly the same point
-     in the song. Close the drawer and it keeps playing; press listen off to stop.</p>
-  <p><span class="k">skip</span> moves everyone to the next song. Pausing is shared too —
-     if you pause, it pauses for everybody, and resumes where it stopped.</p>
-  <p>Everything that happens to the queue — queued, now playing, skipped, paused,
-     resumed, removed — is written to the <span class="k">ACTIVITY</span> panel below.
-     That's the one log that ignores which board you're on: the music is shared by
-     every board, so the lines show up on all of them.</p>
-  <p><span class="k">beat bars</span> makes the bars react to the actual sound. The browser
-     will ask you to share a tab and tick “share tab audio” — that's the only way a page can
-     read audio coming from YouTube. It's per person and off by default.</p>
-  <p><span class="k">video wallpaper</span> throws whatever is playing across the whole page
-     and the queue box, replacing your usual background. Turn it off and the background and
-     the artwork come straight back. It only changes what you see.</p>
-  <p>Drop a loop into <span class="k">public/img/</span> named <span class="k">music.mp4</span>
-     (or music.gif / music.png) and it plays quietly behind the queue as decoration. The
-     <span class="k">art</span> button turns it off for you if you'd rather not have it.</p>
+  <p>Paste a YouTube link. Everyone hears the same moment — pause, skip and scrubbing carry
+     to the room.</p>
+  <p><span class="k">listen</span> turns your sound on. <span class="k">size</span> steps the
+     box. Drag its header to move it. <span class="k">video wallpaper</span> puts the video
+     behind the page.</p>
+  <p>Click <span class="k">N listening</span> for who has it on, and <span class="k">✕</span>
+     to turn theirs off.</p>
 
-  <h5>TIDYING THE TABS</h5>
-  <p>The thin bar under the region tabs opens a list — tick the boards you care about,
-     untick the rest. It only affects your own view, and the board you're currently on
-     always stays put.</p>
-
-  <h5>MVP CALL</h5>
-  <p>The red <span class="k">MVP</span> button up top alarms everyone who is currently
-     sitting on a channel — any channel, any board. Sound, popup, flashing tab.</p>
-  <p>The <span class="k">29:30</span> button beside it counts down and fires the same alarm
-     when it reaches zero. Once it's counting, the clock itself is locked so nobody
-     knocks it by accident — use the <span class="k">↻</span> beside it to start a fresh
-     29:30. The button beside it stops a running clock and parks it back at 29:30 —
-     press the clock again when you want it going. If nothing is running, that same
-     button just starts it. Everyone sees the same clock.</p>
-  <p><span class="k">Right-click</span> the MVP button (or hold it on a phone) to write what the alarm
-     should say — whatever you set is what everyone sees in the popup.</p>
-  <p>Anyone not on a channel hears nothing, so people who are just watching the board
-     don't get bothered.</p>
+  <h5>MVP</h5>
+  <p><span class="k">MVP</span> alarms everyone on a channel. Right-click to write your own
+     message — <code>*stars*</code> make text bold.</p>
+  <p><span class="k">29:30</span> is started by hand. It shakes for a minute after an MVP
+     call to remind you.</p>
 
   <h5>40 MINUTE ALERT</h5>
-  <p>On <span class="k">B1</span>, <span class="k">RD1</span> and <span class="k">RD4</span>:
-     when someone on a channel hits 40 minutes, everyone <em>on that channel</em> gets a
-     sound and a popup. Nobody else is bothered by it.</p>
-  <p>Every other board is silent — RD6, RD7 and all the GOB boards never chime.</p>
-  <p>Best way to be included: mark yourself in the people box above. Failing that it
-     matches the display name you set at the bottom of the chat.</p>
+  <p><span class="k">B1</span>, <span class="k">RD1</span> and <span class="k">RD4</span>
+     only: at 40 minutes the people on that channel get a sound and a popup. Every other
+     board is silent.</p>
 
-  <h5>CHAT</h5>
-  <p>7TV emotes work here — type the name, or hit the <span class="k">☺</span> button next to the message box to browse them.</p>
-
-  <h5>GOOD TO KNOW</h5>
-  <p>Everyone shares one board — changes show up for everybody straight away.</p>
-  <p>In <span class="k">PROJECTED BURNS</span>, a channel with people already on it and
-     room for your whole group is marked <span class="k">SUGGESTED</span> and put at the
-     top — two parties on one channel share the burning instead of splitting it between
-     two. If nobody has room for all of you, or you are already four, it just ranks by
-     burning. Rows that would only fit some of you say so, and full channels are labelled
-     full rather than suggested.</p>
-  <p>Every change is logged in the chat below, so you can see who did what.</p>
-  <p>Click your name at the bottom to change how you show up.</p>
+  <h5>THE REST</h5>
+  <p>Boards share their area's Players list and one chat. Filters and search narrow the grid.
+     Hide tabs with the <span class="k">›</span> at the end of the row.</p>
+  <p>On a phone the Players box and tabs stay pinned, and <span class="k">jump to me</span>
+     finds your channel. Everything is logged with a name. The gear holds background, alert
+     sound and the projection rules.</p>
 `;
 
 function openHelp(focusId){
@@ -4878,6 +4831,17 @@ function checkChannelTimers(){
   if(priming) timersPrimed = true;
 }
 
+/* Whether the panels should go to glass.
+   There are two ways to end up with something behind the board: your own file
+   in public/img/, or the video wallpaper from the queue. The glass rules were
+   keyed on the first alone, so with only the wallpaper on the cards stayed
+   solid and you could not see the video through them. One flag, either source. */
+let ownBgFound = false;
+function paintBgClass(){
+  const live = ownBgFound || (typeof wallLive === "function" && wallLive());
+  document.documentElement.classList.toggle("has-bg", live);
+}
+
 /* Drop a background into public/img/ and it appears behind everything:
      bg.mp4  (or bg.webm)  — video, looped and muted
      bg.jpg  / bg.png / bg.webp / bg.gif — a still
@@ -4890,7 +4854,8 @@ function checkChannelTimers(){
 
   const show = el => {
     el.style.display = "block";
-    document.documentElement.classList.add("has-bg");
+    ownBgFound = true;
+    paintBgClass();
   };
 
   function tryStills(i){
@@ -5454,6 +5419,7 @@ function paintWall(){
   // the class is what hides the page's own background, so it only goes on
   // while a video is actually up there to replace it
   document.documentElement.classList.toggle("yt-bg", live);
+  paintBgClass();                   // the wallpaper counts as a background too
   wallBtn.textContent = vidWall
     ? (live ? "video wallpaper: on" : "video wallpaper: on (waiting for a song)")
     : "video wallpaper: off";
