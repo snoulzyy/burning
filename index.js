@@ -206,6 +206,21 @@ const browserIdOf = req => readCookies(req.headers && req.headers.cookie)[ID_COO
 const ipOf = req => String((req.headers && req.headers["x-forwarded-for"] || "").split(",")[0].trim()
   || (req.socket && req.socket.remoteAddress) || "").replace(/^::ffff:/, "");
 
+/* Hand out an id on any request that arrives without one, not just a full page
+   load. A tab that was already open when this shipped never asks for the page
+   again, but it does poll /version every 45 seconds — so it picks one up
+   within the minute instead of waiting for somebody to hit reload. */
+app.use((req, res, next) => {
+  if (!browserIdOf(req)) {
+    const fresh = uid() + uid();
+    res.setHeader("Set-Cookie",
+      ID_COOKIE + "=" + fresh + "; Max-Age=" + Math.floor(YEAR / 1000)
+      + "; Path=/; SameSite=Lax; HttpOnly");
+    req.freshId = fresh;
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/version", (_req, res) => res.json({ build: BUILD }));
@@ -237,9 +252,10 @@ function adminPage() {
       <td class="dim">${esc(v.ip || "—")}</td>
       <td class="dim">${esc(since(v.last))}</td>
       <td class="dim">${v.acts || 0}</td>
-      <td class="dim mono">${esc(String(v.id).slice(0, 10))}</td>
+      <td class="dim mono">${v.noCookie ? "<span class=\"pend\">old tab</span>"
+                                          : esc(String(v.id).slice(0, 10))}</td>
       <td>
-        <a class="btn" href="?ban=${encodeURIComponent(v.id)}">ban browser</a>
+        ${v.noCookie ? "" : `<a class="btn" href="?ban=${encodeURIComponent(v.id)}">ban browser</a>`}
         ${v.ip ? `<a class="btn" href="?banip=${encodeURIComponent(v.ip)}">ban address</a>` : ""}
       </td>
     </tr>`).join("");
@@ -270,6 +286,7 @@ function adminPage() {
        border-radius:6px;padding:3px 8px;margin-right:5px;font-size:11px}
   .btn:hover{color:#f87171;border-color:#f87171}
   .none{color:#5f7285;padding:10px 0}
+  .pend{color:#eab308}
 </style>
 <h2>ON THE SITE LATELY</h2>
 ${rows ? `<table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table>`
@@ -314,14 +331,6 @@ app.get("/:region", (req, res, next) => {
   const r = byId(req.params.region.toUpperCase());
   if (!r) return next();
   if (!r.enabled) return res.status(404).send(offline(r.id));
-  // hand this browser an id if it does not have one yet
-  if (!browserIdOf(req)) {
-    res.cookie
-      ? res.cookie(ID_COOKIE, uid() + uid(), { maxAge: YEAR, sameSite: "Lax", httpOnly: true })
-      : res.setHeader("Set-Cookie",
-          ID_COOKIE + "=" + uid() + uid() + "; Max-Age=" + Math.floor(YEAR / 1000)
-          + "; Path=/; SameSite=Lax; HttpOnly");
-  }
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
@@ -352,13 +361,19 @@ function isBanned(id, ip) {
 }
 
 function noteSeen(id, ip, name) {
-  if (!id) return;
+  /* A tab open from before this shipped has no cookie, and its socket was
+     established before there was one to send — so it would be invisible here
+     until the person reloaded. Filing them under their address instead means
+     they show up straight away, with their name, and can still be banned. */
+  const key = id || (ip ? "ip:" + ip : "");
+  if (!key) return;
   const now = Date.now();
-  const was = state.seen[id] || { id, first: now, acts: 0 };
+  const was = state.seen[key] || { id: key, noCookie: !id, first: now, acts: 0 };
+  if (id) was.noCookie = false;
   was.last = now;
   if (ip) was.ip = ip;
   if (name && !nameless(name)) was.name = name;
-  state.seen[id] = was;
+  state.seen[key] = was;
   // keep the newest few hundred, so this cannot grow without limit
   const keys = Object.keys(state.seen);
   if (keys.length > SEEN_MAX) {
@@ -729,8 +744,9 @@ io.on("connection", socket => {
     if (nameless(by)) return;          // say who you are first
     if (isBanned(browserId, ip)) { socket.disconnect(true); return; }
     noteSeen(browserId, ip, by);
-    if (state.seen[browserId]) state.seen[browserId].acts =
-      (state.seen[browserId].acts || 0) + 1;
+    const seenKey = browserId || (ip ? "ip:" + ip : "");
+    if (state.seen[seenKey]) state.seen[seenKey].acts =
+      (state.seen[seenKey].acts || 0) + 1;
     const at = Number(a.ch);
     const target = board[at];
 
