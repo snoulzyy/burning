@@ -1024,30 +1024,54 @@
   }
 
   /* ---------------- mvp comms ----------------
-     Short lines about what is up and where. They sit next to the MVP button
-     because that is where people look when one is called. */
-  .mvpnotes{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
-  .mvpnote{
-    display:inline-flex;align-items:center;gap:7px;max-width:280px;
-    padding:5px 6px 5px 10px;border-radius:999px;
-    font-size:11.5px;letter-spacing:.02em;color:#fbbf24;
-    background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5);
+     One button that opens a list, rather than the lines themselves sitting in
+     the header — several of those wrapped it onto a second row and made a mess
+     of everything beside it. The button never changes width by more than a
+     digit, so the header stays on one line however many are posted. */
+  .commsbtn{white-space:nowrap;flex:none}
+  .commsbtn.some{
+    color:var(--amber);border-color:rgba(245,158,11,.6);
+    background:rgba(245,158,11,.10);
   }
-  .mvpnote .nt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .mvpnote .nby{font-size:9.5px;color:var(--dim);flex:none}
-  .mvpnote .nx{
-    display:grid;place-items:center;flex:none;width:16px;height:16px;padding:0;
-    line-height:0;cursor:pointer;border:0;border-radius:50%;
-    background:none;color:rgba(245,158,11,.7);
+  .commsbtn .cn{
+    display:inline-grid;place-items:center;min-width:16px;height:16px;margin-left:6px;
+    padding:0 4px;border-radius:999px;font-size:10px;font-weight:800;
+    color:#2a1a02;background:var(--amber);
   }
-  .mvpnote .nx svg{width:9px;height:9px;display:block}
-  .mvpnote .nx:hover{color:var(--red);background:rgba(248,113,113,.15)}
-  .mvpnote-add{
-    font:inherit;font-size:11.5px;padding:5px 11px;border-radius:999px;cursor:pointer;
-    color:var(--dim);background:none;border:1px dashed rgba(245,158,11,.45);
+  .commsmenu{
+    position:fixed;z-index:60;width:min(340px,calc(100vw - 20px));
+    padding:12px 10px 6px;border-radius:14px;
+    background:#0d131c;border:1px solid rgba(245,158,11,.42);
+    box-shadow:0 22px 52px rgba(0,0,0,.72), 0 0 18px -6px rgba(245,158,11,.6);
+    max-height:min(70vh,460px);overflow-y:auto;scrollbar-width:thin;
   }
-  .mvpnote-add:hover{color:var(--amber);border-style:solid;border-color:rgba(245,158,11,.8)}
-  @media(max-width:700px){ .mvpnote{max-width:190px} }
+  .commsmenu h4{
+    margin:0 4px 10px;font:inherit;font-size:11px;font-weight:700;
+    letter-spacing:.17em;color:#fbbf24;
+  }
+  .comms-row{
+    display:flex;align-items:flex-start;gap:9px;padding:9px 8px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .comms-row:last-of-type{border-bottom:0}
+  .comms-row .ct{flex:1;min-width:0;font-size:12.5px;color:var(--text);word-break:break-word}
+  .comms-row .cby{display:block;margin-top:3px;font-size:9.5px;color:var(--dim)}
+  .comms-row .cx{
+    display:grid;place-items:center;flex:none;width:22px;height:22px;padding:0;
+    line-height:0;cursor:pointer;border:0;border-radius:6px;
+    background:none;color:#4a5f74;
+  }
+  .comms-row .cx svg{width:10px;height:10px;display:block}
+  .comms-row .cx:hover{color:var(--red);background:rgba(248,113,113,.14)}
+  .comms-none{padding:4px 8px 10px;font-size:12px;color:var(--dim);line-height:1.5}
+  .comms-add{
+    display:flex;align-items:center;gap:10px;width:100%;
+    margin-top:2px;padding:12px 8px;border:0;border-top:1px solid var(--line-soft);
+    background:none;cursor:pointer;font:inherit;text-align:left;
+    font-size:13px;font-weight:600;color:#fbbf24;
+  }
+  .comms-add:hover{background:rgba(245,158,11,.12)}
+  .comms-add .cplus{font-size:16px;line-height:1}
 
   /* ---------------- mvp popup ---------------- */
   .mvp-pop{
@@ -1574,7 +1598,7 @@
       <button class="timerreset" id="mvpTimerReset" title="Restart the countdown from 29:30" aria-label="Restart countdown"></button>
     </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
-    <span class="mvpnotes" id="mvpNotes"></span>
+    <button class="ghost commsbtn" id="commsBtn" title="What is up and where">mvp comms</button>
     <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
     <button class="gear-btn" id="helpBtn" title="Settings" aria-label="Settings"></button>
     <div class="headright">
@@ -2455,8 +2479,7 @@ const HELP_HTML = `
      with room for your whole group ranks above a higher burning one.</p>
 
   <h5>PLAYERS BOX</h5>
-  <p>Names you add are yours to rename, recolour and remove. Click one then a channel, or
-     drag it across.</p>
+  <p>Names you add are yours to rename, recolour and remove. Click one then a channel.</p>
   <p>The <span class="k">dot</span> opens colours — up to three, blended.
      <span class="k">FILL FROM THE FIRST</span> builds a set from one; the slider widens it.
      Nothing applies until you press apply.</p>
@@ -2473,7 +2496,7 @@ const HELP_HTML = `
   <h5>MVP</h5>
   <p><span class="k">MVP</span> alarms everyone on a channel. Right-click to write your own
      message — <code>*stars*</code> make text bold.</p>
-  <p><span class="k">+ mvp comms</span> posts what is up and where, like
+  <p><span class="k">mvp comms</span> opens a list of what is up and where, like
      <code>ch18 zak xx:00/30 1/4</code>. They stay until someone clears them.</p>
   <p><span class="k">29:30</span> is started by hand, and shakes for a minute after an MVP
      call to remind you.</p>
@@ -4651,48 +4674,104 @@ const mvpBtn = document.getElementById("mvpBtn");
 let mvpNotes = [];
 socket.on("mvpnotes", arr => { mvpNotes = Array.isArray(arr) ? arr : []; renderMvpNotes(); });
 
+/* The button carries a count; the lines themselves live in a dropdown. Several
+   of them sitting in the header wrapped it onto a second row, which pushed
+   everything else about. */
 function renderMvpNotes(){
-  const box = document.getElementById("mvpNotes");
-  if(!box) return;
-  box.innerHTML = "";
+  const b = document.getElementById("commsBtn");
+  if(!b) return;
+  b.textContent = "mvp comms";
+  b.classList.toggle("some", mvpNotes.length > 0);
+  if(mvpNotes.length){
+    const n = document.createElement("span");
+    n.className = "cn";
+    n.textContent = String(mvpNotes.length);
+    b.appendChild(n);
+  }
+  b.title = mvpNotes.length
+    ? mvpNotes.length + " posted — click to read them"
+    : "What is up and where";
+  if(menuEl && menuEl.classList.contains("commsmenu")) paintCommsMenu(menuEl);
+}
+
+function postComms(){
+  if(!needName("Add yourself in Players before posting MVP comms.")) return;
+  const v = prompt("MVP comms — what is up and where?", "");
+  const text = (v || "").trim().slice(0, 60);
+  if(text) send({ type:"mvpnote", text });
+}
+
+function paintCommsMenu(m){
+  m.innerHTML = "";
+  const h = document.createElement("h4");
+  h.textContent = "MVP COMMS";
+  m.appendChild(h);
+
+  if(!mvpNotes.length){
+    const e = document.createElement("div");
+    e.className = "comms-none";
+    e.textContent = "Nothing posted. Say what is up and where — ch18 zak xx:00/30 1/4.";
+    m.appendChild(e);
+  }
 
   mvpNotes.forEach(n => {
-    const chip = document.createElement("span");
-    chip.className = "mvpnote";
-    chip.title = n.text + "  ·  posted by " + (n.by || "someone");
+    const row = document.createElement("div");
+    row.className = "comms-row";
 
     const t = document.createElement("span");
-    t.className = "nt";
+    t.className = "ct";
     t.textContent = n.text;
-
     const by = document.createElement("span");
-    by.className = "nby";
-    by.textContent = n.by || "";
+    by.className = "cby";
+    by.textContent = n.by || "someone";
+    t.appendChild(by);
 
     const x = document.createElement("button");
-    x.className = "nx";
+    x.className = "cx";
     x.innerHTML = crossSVG();
     x.title = "Clear this";
     x.onclick = () => send({ type:"mvpnote-clear", id: n.id });
 
-    chip.append(t, by, x);
-    box.appendChild(chip);
+    row.append(t, x);
+    m.appendChild(row);
   });
 
   if(mvpNotes.length < 8){
     const add = document.createElement("button");
-    add.className = "mvpnote-add";
-    add.textContent = mvpNotes.length ? "+" : "+ mvp comms";
-    add.title = "Post what is up and where — ch18 zak xx:00/30 1/4";
-    add.onclick = () => {
-      if(!needName("Add yourself in Players before posting MVP comms.")) return;
-      const v = prompt("MVP comms — what is up and where?", "");
-      const text = (v || "").trim().slice(0, 60);
-      if(text) send({ type:"mvpnote", text });
-    };
-    box.appendChild(add);
+    add.className = "comms-add";
+    const plus = document.createElement("span");
+    plus.className = "cplus";
+    plus.textContent = "+";
+    const lab = document.createElement("span");
+    lab.textContent = "Post one";
+    add.append(plus, lab);
+    add.onclick = () => { closeMenu(); postComms(); };
+    m.appendChild(add);
   }
 }
+
+function openCommsMenu(anchor){
+  if(toggledOpen(anchor)) return;
+  closeMenu();
+  const m = document.createElement("div");
+  m.className = "commsmenu";
+  m.onclick = e => e.stopPropagation();
+  paintCommsMenu(m);
+  document.body.appendChild(m);
+
+  const r = anchor.getBoundingClientRect();
+  const boxW = m.offsetWidth, boxH = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left - 8, window.innerWidth - boxW - 10)) + "px";
+  m.style.top = (r.bottom + 6 + boxH > window.innerHeight - 8
+    ? Math.max(8, r.top - boxH - 6) : r.bottom + 6) + "px";
+  menuEl = m;
+  menuOwner = anchor;
+}
+
+document.getElementById("commsBtn").onclick = e => {
+  e.stopPropagation();
+  openCommsMenu(e.currentTarget);
+};
 renderMvpNotes();
 
 /* The countdown has to be started by hand once the MVP is actually given, and
