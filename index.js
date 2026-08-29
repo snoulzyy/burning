@@ -84,6 +84,15 @@ function hydrate(saved) {
   // Music is the one thing that happens everywhere at once, so its log is
   // global: it shows in the activity pane of every board, whichever board the
   // action was sent from. It used to sit in the chat — move those across, once.
+  /* Bans, and a short record of who has been on the site.
+     The record is only what the server already sees on every request — a
+     browser id, the name they chose, the address they came from — kept so
+     there is something to point at when deciding whether to ban. */
+  if (!state.bans || typeof state.bans !== "object") state.bans = {};
+  if (!state.bans.ids || typeof state.bans.ids !== "object") state.bans.ids = {};
+  if (!state.bans.ips || typeof state.bans.ips !== "object") state.bans.ips = {};
+  if (!state.seen || typeof state.seen !== "object") state.seen = {};
+
   if (!Array.isArray(state.musicLog)) state.musicLog = [];
   const keepChat = [];
   state.chat.forEach(e => {
@@ -170,9 +179,134 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Render sits behind a proxy, so without this every visitor looks like the
+// proxy's own address rather than their own
+app.set("trust proxy", true);
+
+/* ---------------- who is who ----------------
+   A per-browser id, set as a cookie on the page itself. The browser hands it
+   back on every request after that, including the socket handshake, so the
+   server can tell one browser from another without the page having to do
+   anything — which matters here, because touching public/index.html would
+   make every open tab prompt for a reload.
+   It is a random string and nothing else. It says nothing about the person. */
+const ID_COOKIE = "ct_id";
+const YEAR = 365 * 24 * 60 * 60 * 1000;
+
+function readCookies(header) {
+  const out = {};
+  String(header || "").split(";").forEach(part => {
+    const i = part.indexOf("=");
+    if (i < 0) return;
+    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+const browserIdOf = req => readCookies(req.headers && req.headers.cookie)[ID_COOKIE] || "";
+const ipOf = req => String((req.headers && req.headers["x-forwarded-for"] || "").split(",")[0].trim()
+  || (req.socket && req.socket.remoteAddress) || "").replace(/^::ffff:/, "");
+
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/version", (_req, res) => res.json({ build: BUILD }));
+
+/* ---------------- the quiet door ----------------
+   Set ADMIN_KEY in the environment on Render and the page lives at
+   /admin/<that key>. With no key set the route does not exist at all, and a
+   wrong key 404s exactly like any other unknown address — there is nothing to
+   find by guessing, and nothing anywhere else on the site points at it. */
+const ADMIN_KEY = String(process.env.ADMIN_KEY || "").trim();
+
+const esc = t => String(t == null ? "" : t)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
+
+const since = t => {
+  if (!t) return "—";
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  return h < 24 ? h + "h ago" : Math.floor(h / 24) + "d ago";
+};
+
+function adminPage() {
+  const seen = Object.values(state.seen).sort((a, b) => (b.last || 0) - (a.last || 0));
+  const rows = seen.map(v => `<tr>
+      <td>${esc(v.name || "—")}</td>
+      <td class="dim">${esc(v.ip || "—")}</td>
+      <td class="dim">${esc(since(v.last))}</td>
+      <td class="dim">${v.acts || 0}</td>
+      <td class="dim mono">${esc(String(v.id).slice(0, 10))}</td>
+      <td>
+        <a class="btn" href="?ban=${encodeURIComponent(v.id)}">ban browser</a>
+        ${v.ip ? `<a class="btn" href="?banip=${encodeURIComponent(v.ip)}">ban address</a>` : ""}
+      </td>
+    </tr>`).join("");
+
+  const banRows = Object.keys(state.bans.ids).map(id => {
+    const b = state.bans.ids[id];
+    return `<tr><td>${esc((b && b.name) || "—")}</td><td class="dim mono">${esc(id.slice(0, 10))}</td>
+      <td class="dim">browser</td><td class="dim">${esc(since(b && b.at))}</td>
+      <td><a class="btn" href="?unban=${encodeURIComponent(id)}">lift</a></td></tr>`;
+  }).concat(Object.keys(state.bans.ips).map(ipk => {
+    const b = state.bans.ips[ipk];
+    return `<tr><td>${esc((b && b.name) || "—")}</td><td class="dim mono">${esc(ipk)}</td>
+      <td class="dim">address</td><td class="dim">${esc(since(b && b.at))}</td>
+      <td><a class="btn" href="?unbanip=${encodeURIComponent(ipk)}">lift</a></td></tr>`;
+  })).join("");
+
+  return `<!doctype html><meta charset="utf-8"><title>·</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  body{background:#050a10;color:#e6edf5;font:13px ui-monospace,monospace;margin:0;padding:22px}
+  h2{font-size:12px;letter-spacing:.16em;color:#22d3ee;margin:0 0 10px;font-weight:700}
+  h2.two{margin-top:26px}
+  table{border-collapse:collapse;width:100%;max-width:900px}
+  th{text-align:left;font-size:10px;letter-spacing:.1em;color:#5f7285;padding:6px 10px 6px 0;font-weight:600}
+  td{padding:7px 10px 7px 0;border-top:1px solid #16202b;vertical-align:middle}
+  .dim{color:#8ba0b4}.mono{font-size:11px}
+  .btn{display:inline-block;color:#8ba0b4;text-decoration:none;border:1px solid #22303f;
+       border-radius:6px;padding:3px 8px;margin-right:5px;font-size:11px}
+  .btn:hover{color:#f87171;border-color:#f87171}
+  .none{color:#5f7285;padding:10px 0}
+</style>
+<h2>ON THE SITE LATELY</h2>
+${rows ? `<table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table>`
+       : `<p class="none">Nobody yet.</p>`}
+<h2 class="two">BANNED</h2>
+${banRows ? `<table><tr><th>name</th><th>what</th><th>kind</th><th>when</th><th></th></tr>${banRows}</table>`
+          : `<p class="none">Nobody.</p>`}`;
+}
+
+if (ADMIN_KEY) {
+  app.get("/admin/:key", (req, res, next) => {
+    if (req.params.key !== ADMIN_KEY) return next();      // 404, like any bad address
+    const q = req.query || {};
+    let changed = false;
+
+    if (q.ban) {
+      const v = state.seen[q.ban] || {};
+      state.bans.ids[q.ban] = { at: Date.now(), name: v.name || "", ip: v.ip || "" };
+      changed = true;
+    }
+    if (q.banip) {
+      const owner = Object.values(state.seen).find(v => v.ip === q.banip);
+      state.bans.ips[q.banip] = { at: Date.now(), name: (owner && owner.name) || "" };
+      changed = true;
+    }
+    if (q.unban)   { delete state.bans.ids[q.unban];   changed = true; }
+    if (q.unbanip) { delete state.bans.ips[q.unbanip]; changed = true; }
+
+    if (changed) {
+      persist();
+      dropBanned();
+      // strip the query so a refresh does not repeat it
+      return res.redirect("/admin/" + encodeURIComponent(ADMIN_KEY));
+    }
+    res.set("Cache-Control", "no-store").send(adminPage());
+  });
+}
 
 app.get("/", (_req, res) => res.redirect("/" + live[0].toLowerCase()));
 
@@ -180,6 +314,14 @@ app.get("/:region", (req, res, next) => {
   const r = byId(req.params.region.toUpperCase());
   if (!r) return next();
   if (!r.enabled) return res.status(404).send(offline(r.id));
+  // hand this browser an id if it does not have one yet
+  if (!browserIdOf(req)) {
+    res.cookie
+      ? res.cookie(ID_COOKIE, uid() + uid(), { maxAge: YEAR, sameSite: "Lax", httpOnly: true })
+      : res.setHeader("Set-Cookie",
+          ID_COOKIE + "=" + uid() + uid() + "; Max-Age=" + Math.floor(YEAR / 1000)
+          + "; Path=/; SameSite=Lax; HttpOnly");
+  }
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
@@ -192,6 +334,48 @@ function offline(id) {
     <p style="margin:0 0 18px">This region isn't open yet.</p>
     <a href="/${live[0].toLowerCase()}" style="color:#22d3ee">Go to ${live[0]}</a>
   </div></body>`;
+}
+
+/* ---------------- bans ----------------
+   Two things get banned: the browser id from the cookie, and the address.
+   The id survives a new address; the address catches a fresh browser on the
+   same machine. Neither is watertight on its own — clearing cookies beats the
+   first, a phone hotspot beats the second — so both are checked.
+   Nothing about this is visible from the outside. A banned browser simply
+   fails to connect, the same as the site being down. */
+const SEEN_MAX = 400;
+
+function isBanned(id, ip) {
+  if (id && state.bans.ids[id]) return true;
+  if (ip && state.bans.ips[ip]) return true;
+  return false;
+}
+
+function noteSeen(id, ip, name) {
+  if (!id) return;
+  const now = Date.now();
+  const was = state.seen[id] || { id, first: now, acts: 0 };
+  was.last = now;
+  if (ip) was.ip = ip;
+  if (name && !nameless(name)) was.name = name;
+  state.seen[id] = was;
+  // keep the newest few hundred, so this cannot grow without limit
+  const keys = Object.keys(state.seen);
+  if (keys.length > SEEN_MAX) {
+    keys.sort((a, b) => (state.seen[a].last || 0) - (state.seen[b].last || 0))
+        .slice(0, keys.length - SEEN_MAX)
+        .forEach(k => delete state.seen[k]);
+  }
+}
+
+// throw off anyone already connected who has just been banned
+function dropBanned() {
+  io.sockets.sockets.forEach(sock => {
+    const c = readCookies(sock.handshake.headers.cookie);
+    const ip = String((sock.handshake.headers["x-forwarded-for"] || "").split(",")[0].trim()
+      || sock.handshake.address || "").replace(/^::ffff:/, "");
+    if (isBanned(c[ID_COOKIE], ip)) sock.disconnect(true);
+  });
 }
 
 /* ---------------- realtime ---------------- */
@@ -489,6 +673,16 @@ function presence() {
 }
 
 io.on("connection", socket => {
+  const cookies = readCookies(socket.handshake.headers.cookie);
+  const browserId = cookies[ID_COOKIE] || "";
+  const ip = String((socket.handshake.headers["x-forwarded-for"] || "").split(",")[0].trim()
+    || socket.handshake.address || "").replace(/^::ffff:/, "");
+
+  // banned browsers get nothing. no message, no explanation — from their side
+  // it is indistinguishable from the site being unreachable.
+  if (isBanned(browserId, ip)) { socket.disconnect(true); return; }
+  noteSeen(browserId, ip, "");
+
   let viewing = null;   // the tab they're looking at right now
 
   socket.on("join", raw => {
@@ -533,6 +727,10 @@ io.on("connection", socket => {
     const before = board.map(c => c.entries.length);
     const by = clean(a.by, 24) || "someone";
     if (nameless(by)) return;          // say who you are first
+    if (isBanned(browserId, ip)) { socket.disconnect(true); return; }
+    noteSeen(browserId, ip, by);
+    if (state.seen[browserId]) state.seen[browserId].acts =
+      (state.seen[browserId].acts || 0) + 1;
     const at = Number(a.ch);
     const target = board[at];
 
@@ -1053,6 +1251,7 @@ io.on("connection", socket => {
   // the name this browser goes by, for the watching list
   socket.on("whoami", n => {
     const who = clean(n, 24);
+    noteSeen(browserId, ip, who);
     const next = nameless(who) ? "" : who;
     if (watchers.get(socket.id) === next) return;
     watchers.set(socket.id, next);
