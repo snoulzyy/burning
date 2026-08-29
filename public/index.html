@@ -180,7 +180,9 @@
      grid item are not reliable, this is */
   .bench-col{min-width:0;display:flex;flex-direction:column}
   @media(max-width:900px){
-    .board-area{grid-template-columns:1fr;align-items:start;padding-top:var(--chromeH,0px)}
+    .board-area{grid-template-columns:1fr;align-items:start}
+    /* the gap is only needed while the bars are actually pinned */
+    html.stuck .board-area{padding-top:var(--chromeH,0px)}
     .bench-col{display:block}
     /* Pinned rather than sticky. Sticky needs room to travel inside its parent,
        and on one column that parent is exactly as tall as the box itself — so
@@ -188,13 +190,18 @@
        Written as `.board-area .bench` on purpose: the plain `.bench` rule is
        further down the file, and a media query adds no specificity, so the
        later rule was quietly winning and putting sticky back. */
-    .board-area .bench{
+    /* Pinned, but only after the header has scrolled out of the way.
+       It used to be fixed from the moment the page loaded, which parked it on
+       top of the title, the clock, MVP, music and the gear — so at the top of
+       the page you were looking at two things stacked on each other and could
+       not reach settings at all. */
+    html.stuck .board-area .bench{
       position:fixed;top:0;left:0;right:0;z-index:70;
       max-height:none;border-radius:0 0 12px 12px;border-top:0;
       box-shadow:0 10px 24px rgba(0,0,0,.65);
     }
     /* the board picker rides along underneath, so it is always in reach */
-    .headright .tabsWrap{
+    html.stuck .headright .tabsWrap{
       position:fixed;top:var(--benchH,0px);left:0;right:0;z-index:69;
       padding:0;background:rgba(6,11,17,calc(var(--glass) + .12));
       /* see-through, like everything else over the board */
@@ -306,6 +313,9 @@
   .lockic svg{width:11px;height:11px;display:block}
   .lockic.me{color:var(--cyan)}
   .chip.placed{opacity:.62;cursor:default}
+  /* on a channel, but not on this board — still yours to move */
+  .chip.elsewhere{opacity:1}
+  .chip.elsewhere .pmeta.away{color:var(--cyan);opacity:.9}
   .chip.mine{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.08)}
   .chip.mine.tinted{
     box-shadow:
@@ -1023,6 +1033,44 @@
     .drawer.size-l .now{min-height:250px}
   }
 
+  /* ---------------- the announcement ----------------
+     Sits under the header, above everything else, so it is the first thing
+     read on the way in. Folded to one line by default: an announcement that
+     takes up half the screen every visit stops being read. */
+  .notice{
+    margin:0 0 14px;border-radius:12px;
+    background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.45);
+  }
+  .notice[hidden]{display:none}
+  .notice-head{
+    display:flex;align-items:center;gap:10px;width:100%;
+    padding:11px 13px;background:none;border:0;cursor:pointer;
+    font:inherit;text-align:left;
+  }
+  .notice-ic{display:grid;place-items:center;flex:none;color:var(--amber);line-height:0}
+  .notice-ic svg{width:15px;height:15px;display:block}
+  .notice-tag{
+    flex:none;font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--amber);
+  }
+  .notice-peek{
+    flex:1;min-width:0;font-size:12px;color:var(--label);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .notice.open .notice-peek{opacity:0}
+  .notice-chev{display:grid;place-items:center;flex:none;color:var(--amber);line-height:0}
+  .notice-chev svg{width:13px;height:13px;display:block;transform:rotate(90deg);transition:transform .18s}
+  .notice.open .notice-chev svg{transform:rotate(-90deg)}
+  .notice-body{
+    display:none;padding:0 14px 13px 38px;
+    font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;
+  }
+  .notice.open .notice-body{display:block}
+  .notice-by{display:block;margin-top:8px;font-size:10.5px;color:var(--dim)}
+  @media(max-width:700px){
+    .notice-body{padding-left:14px}
+    .notice-peek{display:none}
+  }
+
   /* ---------------- mvp comms ----------------
      One button that opens a list, rather than the lines themselves sitting in
      the header — several of those wrapped it onto a second row and made a mess
@@ -1610,6 +1658,16 @@
   </header>
 
   <button class="jumpme" id="jumpMe" hidden>jump to me</button>
+  <div class="notice" id="notice" hidden>
+    <button class="notice-head" id="noticeHead">
+      <span class="notice-ic" id="noticeIc"></span>
+      <span class="notice-tag">NOTICE</span>
+      <span class="notice-peek" id="noticePeek"></span>
+      <span class="notice-chev" id="noticeChev"></span>
+    </button>
+    <div class="notice-body" id="noticeBody"></div>
+  </div>
+
   <div class="board-area">
   <div class="bench-col">
     <section class="bench">
@@ -3641,6 +3699,13 @@ function openNextMenu(anchor, fromIdx){
   anchor.classList.add("open");     // flips the chevron on the bar
 }
 
+function megaphoneSVG(){
+  return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
+    + ' stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M4 10v4a1 1 0 0 0 1 1h2l7 4V5L7 9H5a1 1 0 0 0-1 1Z"/>'
+    + '<path d="M18 9.5a3.5 3.5 0 0 1 0 5"/></svg>';
+}
+
 function slidersSVG(){
   return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none"'
     + ' stroke="currentColor" stroke-width="1.9" stroke-linecap="round">'
@@ -3943,6 +4008,12 @@ function renderBench(){
 
   roster.forEach(p => {
     const at = placementOf(p.id);
+    /* Greyed out only on the board they are actually standing on. Seen from
+       any other board in the area they are draggable, and dropping them on a
+       channel here lifts them off the old one — the server does that as part
+       of the assign, and logs it on both boards. Saves crossing them off one
+       map and re-adding them on the next. */
+    const here = !!at && at.region === region;
     // a name belongs to whoever added it, so there's nothing to press
     const mine = myIds.has(p.id);
     const plit = p.color ? glowInk(p.color) : null;
@@ -3951,7 +4022,8 @@ function renderBench(){
 
     const chip = document.createElement("div");
     chip.className = "chip"
-      + (at ? " placed" : "")
+      + (here ? " placed" : "")
+      + (at && !here ? " elsewhere" : "")
       + (mine ? " mine" : "")
       + (pickedPerson === p.id ? " picked" : "");
 
@@ -3992,7 +4064,7 @@ function renderBench(){
     }
     chip.appendChild(nm);
 
-    if(!at){
+    if(!here){
       chip.draggable = true;
       chip.ondragstart = ev => {
         ev.dataTransfer.effectAllowed = "move";
@@ -4008,10 +4080,13 @@ function renderBench(){
 
     // one slot on the right: where they're sitting, or else who owns the name
     const meta = document.createElement("span");
-    meta.className = "pmeta" + (at ? " where" : "");
+    meta.className = "pmeta" + (at ? " where" : "") + (at && !here ? " away" : "");
     if(at){
       meta.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
-      meta.title = p.name + " is on " + at.region + " " + chLabel(at.idx);
+      meta.title = here
+        ? p.name + " is on " + at.region + " " + chLabel(at.idx)
+        : p.name + " is on " + at.region + " " + chLabel(at.idx)
+          + " — drop them on a channel here to move them over";
     } else if(p.claimedBy){
       meta.textContent = mine ? "you" : (p.claimedName || "claimed");
     }
@@ -4032,19 +4107,38 @@ function renderBench(){
       chip.appendChild(lock);
     }
 
-    if(!at && (!p.claimedBy || mine)){
+    /* The cross used to hide whenever somebody was on a channel — and that
+       looks across every board in the area, so being on RD4 took it away while
+       you were staring at RD1 wondering where it went. Removing someone lifts
+       them off the channel server-side anyway, so there was never a reason to
+       hide it. */
+    if(!p.claimedBy || mine){
       const del = document.createElement("button");
       del.className = "chip-btn drop-btn";
       del.innerHTML = crossSVG();
       if(p.color){ del.style.color = glowInk(p.color); del.style.opacity = ".8"; }
-      del.title = "Remove " + p.name + " from the list";
+      del.title = at
+        ? "Remove " + p.name + " — takes them off " + at.region + " " + chLabel(at.idx) + " too"
+        : "Remove " + p.name + " from the list";
       del.onclick = ev => {
         ev.stopPropagation();
-        if(confirm("Remove " + p.name + " from the people list?")){
+        const where = at
+          ? "\n\nThey are on " + at.region + " " + chLabel(at.idx) + " and will be taken off it."
+          : "";
+        if(confirm("Remove " + p.name + " from the people list?" + where)){
           send({ type:"person-remove", id:p.id, token:myToken });
         }
       };
       chip.appendChild(del);
+    } else {
+      /* Somebody else's name. Say whose, rather than leaving a blank space
+         that just reads as broken. */
+      const shut = document.createElement("span");
+      shut.className = "chip-btn locked";
+      shut.innerHTML = crossSVG();
+      shut.title = (p.claimedName || "Somebody else") + " added this name, so only that "
+        + "browser can remove it. Use + add for your own.";
+      chip.appendChild(shut);
     }
 
     benchEl.appendChild(chip);
@@ -4667,6 +4761,54 @@ function renameMyChips(oldName){
 }
 
 const mvpBtn = document.getElementById("mvpBtn");
+/* ---- the announcement ----
+   Whatever has been posted for everyone to read. One line folded, the whole
+   thing when opened, and it remembers whether you had it open — but a new one
+   unfolds itself, since a changed announcement is the point of having one.
+   Deliberately says nothing about where it is set from: this file is served to
+   everybody, so a comment naming that page would be a signpost to it. */
+let notice = { text:"", by:"", at:0 };
+let noticeSeen = "";
+try { noticeSeen = localStorage.getItem("ct:noticeseen") || "" } catch(e){}
+
+const noticeEl = document.getElementById("notice");
+document.getElementById("noticeIc").innerHTML = megaphoneSVG();
+document.getElementById("noticeChev").innerHTML = chevron("right");
+
+function paintNotice(){
+  if(!noticeEl) return;
+  const has = !!(notice && notice.text);
+  noticeEl.hidden = !has;
+  if(!has) return;
+
+  document.getElementById("noticePeek").textContent = notice.text;
+  const body = document.getElementById("noticeBody");
+  body.textContent = notice.text;
+  if(notice.by){
+    const by = document.createElement("span");
+    by.className = "notice-by";
+    by.textContent = "— " + notice.by + (notice.at ? ", " + ago(notice.at) : "");
+    body.appendChild(by);
+  }
+  // a new one opens itself; one you have already read stays folded
+  const stamp = String(notice.at || 0) + ":" + notice.text;
+  if(stamp !== noticeSeen) noticeEl.classList.add("open");
+}
+
+document.getElementById("noticeHead").onclick = () => {
+  noticeEl.classList.toggle("open");
+  if(!noticeEl.classList.contains("open")){
+    noticeSeen = String(notice.at || 0) + ":" + notice.text;
+    try { localStorage.setItem("ct:noticeseen", noticeSeen) } catch(e){}
+  }
+};
+
+socket.on("notice", n => {
+  notice = (n && typeof n === "object") ? n : { text:"", by:"", at:0 };
+  paintNotice();
+});
+paintNotice();
+
 /* ---- MVP comms ----
    Whatever people want to say about what is up and where. They stay until
    somebody clears them, because only the person who was there knows when a
@@ -5291,22 +5433,44 @@ function isNarrow(){
   return (window.innerWidth || document.documentElement.clientWidth || 0) <= 900;
 }
 
+/* The bars only pin once you have scrolled past the header. At the very top
+   everything sits in normal flow, so the title, clock, MVP, music and the gear
+   are all reachable — which they were not when this was pinned from the start. */
+function stickPoint(){
+  const h = document.querySelector("header");
+  return h ? Math.max(40, h.offsetTop + h.offsetHeight - 8) : 120;
+}
+
 function fitBench(){
   if(!benchBox) return;
-  benchBox.classList.toggle("folded", benchFolded && isNarrow());
-  const tabs = document.querySelector(".headright .tabsWrap");
   const root = document.documentElement;
+  const tabs = document.querySelector(".headright .tabsWrap");
+
   if(!isNarrow()){
+    root.classList.remove("stuck");
     root.style.setProperty("--benchH", "0px");
     root.style.setProperty("--chromeH", "0px");
+    benchBox.classList.remove("folded");
     return;
   }
+
+  benchBox.classList.toggle("folded", benchFolded);
+  root.classList.toggle("stuck", window.scrollY > stickPoint());
+
   // two pinned bars up there: the names, then the board picker under it
   const bh = benchBox.offsetHeight;
   const th = tabs ? tabs.offsetHeight : 0;
   root.style.setProperty("--benchH", bh + "px");
   root.style.setProperty("--chromeH", (bh + th + 8) + "px");
 }
+
+// cheap enough to run on every scroll frame, and it has to keep up with one
+let stickTick = false;
+window.addEventListener("scroll", () => {
+  if(stickTick) return;
+  stickTick = true;
+  requestAnimationFrame(() => { stickTick = false; fitBench(); });
+}, { passive: true });
 
 if(benchBox){
   const head = benchBox.querySelector(".bench-head");
