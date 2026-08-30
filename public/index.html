@@ -309,11 +309,6 @@
     font-size:10px;letter-spacing:.03em;color:var(--dim);
   }
   .pmeta.where{color:var(--amber)}
-  /* an explicit width, matching .lockslot: sizing to the icon happened to work
-     but left the column at the mercy of whatever the icon was */
-  .lockic{flex:none;display:grid;place-items:center;width:11px;line-height:0;color:#4a5f74}
-  .lockic svg{width:11px;height:11px;display:block}
-  .lockic.me{color:var(--cyan)}
   .chip.placed{opacity:.62;cursor:default}
   /* one width for the level slot, filled or empty, so the row lines up */
   .plevel,.pslot{flex:none;width:34px;height:20px;box-sizing:border-box}
@@ -366,7 +361,6 @@
   .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
   /* the same size as the real button, so an empty slot holds exactly its place */
   .xslot{flex:none;display:block;width:18px;height:18px;box-sizing:border-box}
-  .lockslot{flex:none;display:block;width:11px;height:11px}
   .chip-btn{
     width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid transparent;background:none;
@@ -4289,26 +4283,10 @@ function renderBench(){
     }
     chip.appendChild(meta);
 
-    if(p.claimedBy){
-      const lock = document.createElement("span");
-      lock.className = "lockic" + (mine ? " me" : "");
-      lock.innerHTML = lockSVG();
-      lock.title = mine
-        ? "This name is yours — alerts come to this browser"
-        : "Claimed by " + (p.claimedName || "someone");
-      if(plit){ lock.style.color = plit; lock.style.opacity = mine ? "1" : ".7"; }
-      chip.appendChild(lock);
-    } else {
-      // an unclaimed name has no padlock, and without a stand-in everything
-      // after it slid left on that row
-      const g = document.createElement("span");
-      g.className = "lockslot";
-      chip.appendChild(g);
-    }
-
-    /* What level this character is. Only whoever added the name can set it,
-       same as everything else about it. Left blank it shows on every board,
-       which is the safe default — four boards share this list. */
+    /* No padlock. It was 11px plus a gap on every single row, and in a column
+       this narrow that was the difference between reading a name and reading
+       half of one. Nothing about ownership changes — the server still refuses
+       anyone else, and the controls you cannot use simply are not drawn. */
     /* Fixed slots from here on. Rows had different numbers of buttons — a
        level only on your own names, a cross only where you can remove one — so
        the cross sat in a different place on every row and landed under your
@@ -4318,6 +4296,7 @@ function renderBench(){
       g.className = "pslot";
       return g;
     };
+    let lvEl = null;
 
     if(!p.claimedBy || mine){
       const lv = document.createElement("button");
@@ -4335,9 +4314,9 @@ function renderBench(){
         send({ type:"person-level", id:p.id, token:myToken,
                level: isFinite(n) && n > 0 ? n : 0 });
       };
-      chip.appendChild(lv);
+      lvEl = lv;
     } else {
-      chip.appendChild(gap());          // hold the level's place
+      lvEl = gap();                     // hold the level's place
     }
 
     /* Your usual crowd, pinned to the top of your own list. Kept in this
@@ -4356,6 +4335,7 @@ function renderBench(){
       renderBench();
     };
     chip.appendChild(star);
+    if(lvEl) chip.appendChild(lvEl);        // right beside the cross
 
     /* The cross used to hide whenever somebody was on a channel — and that
        looks across every board in the area, so being on RD4 took it away while
