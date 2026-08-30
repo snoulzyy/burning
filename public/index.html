@@ -309,19 +309,25 @@
     font-size:10px;letter-spacing:.03em;color:var(--dim);
   }
   .pmeta.where{color:var(--amber)}
-  .lockic{flex:none;display:grid;place-items:center;line-height:0;color:#4a5f74}
+  /* an explicit width, matching .lockslot: sizing to the icon happened to work
+     but left the column at the mercy of whatever the icon was */
+  .lockic{flex:none;display:grid;place-items:center;width:11px;line-height:0;color:#4a5f74}
   .lockic svg{width:11px;height:11px;display:block}
   .lockic.me{color:var(--cyan)}
   .chip.placed{opacity:.62;cursor:default}
+  /* one width for the level slot, filled or empty, so the row lines up */
+  .plevel,.pslot{flex:none;width:34px;height:20px;box-sizing:border-box}
+  .pslot{display:block}
   .plevel{
-    flex:none;padding:2px 5px;border-radius:5px;cursor:pointer;
-    font:inherit;font-size:9.5px;font-weight:700;letter-spacing:.02em;
+    display:grid;place-items:center;padding:0;border-radius:5px;cursor:pointer;
+    font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;
     color:var(--dim);background:var(--raise);border:1px solid var(--line);
   }
   .plevel:hover{color:var(--cyan);border-color:rgba(34,211,238,.45)}
   .plevel.unset{color:#3d4d5e;border-style:dashed}
   .pstar{
-    flex:none;padding:0 2px;line-height:1;font-size:12px;cursor:pointer;
+    flex:none;display:grid;place-items:center;width:22px;height:20px;padding:0;
+    line-height:1;font-size:15px;cursor:pointer;
     background:none;border:0;color:#3d4d5e;
   }
   .pstar:hover{color:var(--amber)}
@@ -358,6 +364,9 @@
       0 0 44px -12px var(--glow);
   }
   .chip.picked{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
+  /* the same size as the real button, so an empty slot holds exactly its place */
+  .xslot{flex:none;display:block;width:18px;height:18px;box-sizing:border-box}
+  .lockslot{flex:none;display:block;width:11px;height:11px}
   .chip-btn{
     width:18px;height:18px;flex:none;display:grid;place-items:center;padding:0;
     border-radius:5px;border:1px solid transparent;background:none;
@@ -1758,8 +1767,8 @@
       <input class="benchfind" id="benchFind" placeholder="find a name" maxlength="24"
              aria-label="Find a player">
       <select class="benchlv" id="benchLv" aria-label="Which levels to show">
-        <option value="here">this board's levels</option>
         <option value="all">everyone</option>
+        <option value="here">this board's levels</option>
       </select>
       <div class="bench-body" id="bench"></div>
     </section>
@@ -4091,7 +4100,13 @@ function boardLevels(){
    a board they might well belong on. */
 function fitsHere(p){
   const want = boardLevels();
-  if(!want.length || !p.level) return true;
+  if(!want.length) return true;          // a board with no level rule at all
+  /* No level set counts as not matching. It used to count as yes, on the
+     grounds that nobody should vanish for not filling it in — but that meant
+     filtering to a board showed everyone who had not bothered, which is most
+     of the list and defeats the filter. "everyone" in the dropdown is one
+     click away, and the count beside it says how many are being held back. */
+  if(!p.level) return false;
   return want.indexOf(p.level) !== -1;
 }
 
@@ -4103,12 +4118,20 @@ function saveStars(){
 }
 
 let benchFind = "";
+/* Everyone, until somebody says otherwise.
+   The filter only shows characters whose level matches this board, and nobody
+   has a level the day it ships — so defaulting it on would greet the whole
+   group with an empty Players box. Off by default, remembered once chosen. */
+let showOthers = true;
 setTimeout(() => {
   const box = document.getElementById("benchFind");
   if(box) box.addEventListener("input", () => { benchFind = box.value; renderBench(); });
   const lv = document.getElementById("benchLv");
   if(lv){
-    try { showOthers = localStorage.getItem("ct:showall") === "1" } catch(e){}
+    try {
+      const saved = localStorage.getItem("ct:showall");
+      if(saved !== null) showOthers = saved === "1";
+    } catch(e){}
     lv.value = showOthers ? "all" : "here";
     lv.addEventListener("change", () => {
       showOthers = lv.value === "all";
@@ -4117,8 +4140,6 @@ setTimeout(() => {
     });
   }
 }, 0);
-let showOthers = false;
-
 function renderBench(){
   if(!benchEl) return;
   const roster = rosters[myArea()] || [];
@@ -4145,7 +4166,9 @@ function renderBench(){
   if(shown.length && !main.length && !showOthers){
     const e = document.createElement("div");
     e.className = "bench-empty";
-    e.textContent = find ? "Nobody by that name here." : "Nobody at this board's level.";
+    e.textContent = find
+      ? "Nobody by that name at this board's level."
+      : "Nobody set to this board's level yet — switch to everyone above.";
     benchEl.appendChild(e);
   }
 
@@ -4155,7 +4178,7 @@ function renderBench(){
   // the dropdown says how many are being held back, so it is never a mystery
   const lvSel = document.getElementById("benchLv");
   if(lvSel){
-    const opt = lvSel.options[0];
+    const opt = lvSel.querySelector('option[value="here"]');
     const lvls = boardLevels();
     opt.textContent = lvls.length
       ? "this board only (lv " + lvls.join("/") + ")" + (others.length ? " — " + others.length + " hidden" : "")
@@ -4246,7 +4269,10 @@ function renderBench(){
         + (isOther ? " — cannot farm " + region : "");
     }
     if(at){
-      meta.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
+      /* Where they are lives on the channel cards, which is where you are
+         looking when you want to know. Repeating it on every row here made a
+         narrow column busier than it needed to be. Kept as a tooltip, since
+         it is still the thing that explains why a row cannot be dragged. */
       meta.title = here
         ? p.name + " is on " + at.region + " " + chLabel(at.idx)
         : p.name + " is on " + at.region + " " + chLabel(at.idx)
@@ -4272,11 +4298,27 @@ function renderBench(){
         : "Claimed by " + (p.claimedName || "someone");
       if(plit){ lock.style.color = plit; lock.style.opacity = mine ? "1" : ".7"; }
       chip.appendChild(lock);
+    } else {
+      // an unclaimed name has no padlock, and without a stand-in everything
+      // after it slid left on that row
+      const g = document.createElement("span");
+      g.className = "lockslot";
+      chip.appendChild(g);
     }
 
     /* What level this character is. Only whoever added the name can set it,
        same as everything else about it. Left blank it shows on every board,
        which is the safe default — four boards share this list. */
+    /* Fixed slots from here on. Rows had different numbers of buttons — a
+       level only on your own names, a cross only where you can remove one — so
+       the cross sat in a different place on every row and landed under your
+       finger where the star had been. Absent controls still take their space. */
+    const gap = () => {
+      const g = document.createElement("span");
+      g.className = "pslot";
+      return g;
+    };
+
     if(!p.claimedBy || mine){
       const lv = document.createElement("button");
       lv.className = "plevel" + (p.level ? "" : " unset");
@@ -4294,6 +4336,8 @@ function renderBench(){
                level: isFinite(n) && n > 0 ? n : 0 });
       };
       chip.appendChild(lv);
+    } else {
+      chip.appendChild(gap());          // hold the level's place
     }
 
     /* Your usual crowd, pinned to the top of your own list. Kept in this
@@ -4336,6 +4380,8 @@ function renderBench(){
         }
       };
       chip.appendChild(del);
+    } else {
+      chip.appendChild(gap()).className = "xslot";   // hold the cross's place
     }
     /* Nothing at all on somebody else's name. There used to be a greyed cross
        here to explain why you could not remove it, but a cross sitting beside
@@ -4372,16 +4418,11 @@ document.getElementById("benchAdd").onclick = () => {
   pendingAdd = { name, was: me };
   setMe(name);
   send({ type:"person-add", name, token: myToken });
-  /* Ask the level while they are here. Skippable — a name with no level shows
-     on every board, so nothing is blocked by leaving it blank. */
-  setTimeout(() => {
-    const v = prompt("What level is " + name + "? (optional — press cancel to skip)", "");
-    if(v === null) return;
-    const n = Math.round(Number(String(v).trim()));
-    if(!isFinite(n) || n <= 0) return;
-    const p = (rosters[myArea()] || []).find(x => x.name === name);
-    if(p) send({ type:"person-level", id:p.id, token:myToken, level:n });
-  }, 400);
+  /* The level is not optional any more. A name without one is filtered out of
+     every board, so skipping it just hides the character you have only this
+     second added — which reads as the add having failed. Keeps asking until it
+     gets one of the levels a board actually uses. */
+  setTimeout(() => askLevel(name), 400);
   // it's yours from the moment you add it, so remember it locally too
   myClaimNames.add(name.toLowerCase());
   saveClaimNames();
@@ -5779,6 +5820,33 @@ if(benchFold) benchFold.innerHTML = chevron("right");
 
 let benchFolded = false;
 try { benchFolded = localStorage.getItem("ct:benchfold") === "1" } catch(e){}
+
+/* The levels a character can actually be. Taken from the boards themselves, so
+   opening a new map with a new level needs no change here. */
+function knownLevels(){
+  const all = new Set();
+  regionList.forEach(r => (r.levels || []).forEach(l => all.add(l)));
+  return [...all].sort((a, b) => a - b);
+}
+
+function askLevel(name){
+  const ok = knownLevels();
+  const list = ok.join(", ");
+  let ask = "What level is " + name + "?\n\n" + list;
+  for(let tries = 0; tries < 4; tries++){
+    const v = prompt(ask, "");
+    if(v === null) return;                    // cancelled outright
+    const n = Math.round(Number(String(v).trim()));
+    if(ok.indexOf(n) !== -1){
+      const p = (rosters[myArea()] || []).find(x => x.name === name);
+      if(p) send({ type:"person-level", id:p.id, token:myToken, level:n });
+      return;
+    }
+    ask = "Please enter one of: " + list + "\n\nWhat level is " + name + "?";
+  }
+  toast("No level set for " + name + " — set it with the button on their row, "
+    + "or they won't show on any board.", true);
+}
 
 function isNarrow(){
   // matchMedia is not everywhere, and the width alone answers the question
