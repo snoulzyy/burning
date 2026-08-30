@@ -16,16 +16,20 @@ const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
 // Add a region here and it gets its own URL, its own board, its own chat.
 // Flip `enabled` to true when you're ready to open it up.
+/* `levels` is which characters can farm a board. Four boards share the RD
+   people list, so without it every RD board shows all of them — which is the
+   point of having it: the list is sorted by whether somebody can actually be
+   here, rather than hidden. Empty means anyone. */
 const REGIONS = [
-  { id: "B1",   area: "B1",  enabled: true },
-  { id: "RD1",  area: "RD",  enabled: true },
-  { id: "RD4",  area: "RD",  enabled: true },
-  { id: "RD6",  area: "RD",  enabled: true },
-  { id: "RD7",  area: "RD",  enabled: true },
-  { id: "GOB1", area: "GOB", enabled: true },
-  { id: "GOB5", area: "GOB", enabled: true },
-  { id: "GOB7", area: "GOB", enabled: true },
-  { id: "GOB8", area: "GOB", enabled: true }
+  { id: "B1",   area: "B1",  enabled: true, levels: [295] },
+  { id: "RD1",  area: "RD",  enabled: true, levels: [296] },
+  { id: "RD4",  area: "RD",  enabled: true, levels: [296] },
+  { id: "RD6",  area: "RD",  enabled: true, levels: [297] },
+  { id: "RD7",  area: "RD",  enabled: true, levels: [297] },
+  { id: "GOB1", area: "GOB", enabled: true, levels: [298, 299] },
+  { id: "GOB5", area: "GOB", enabled: true, levels: [298, 299] },
+  { id: "GOB7", area: "GOB", enabled: true, levels: [298, 299] },
+  { id: "GOB8", area: "GOB", enabled: true, levels: [298, 299] }
 ];
 const AREAS = [...new Set(REGIONS.filter(r => r.enabled).map(r => r.area))];
 const areaOf = id => (byId(id) || {}).area;
@@ -98,6 +102,14 @@ function hydrate(saved) {
      "ch18 zak xx:00/30 1/4". They stay until somebody clears them — stale is
      better than gone here, because the only person who knows a boss is dead is
      whoever was there. Shared by every board, since MVP is not per-map. */
+  // anything queued before there were two players is a YouTube link
+  if (state.music && Array.isArray(state.music.queue)) {
+    state.music.queue.forEach(t => { if (!t.kind) t.kind = "yt"; });
+  }
+  if (state.music && state.music.playing && !state.music.playing.kind) {
+    state.music.playing.kind = "yt";
+  }
+
   if (!Array.isArray(state.mvpNotes)) state.mvpNotes = [];
   state.mvpNotes = state.mvpNotes
     .filter(n => n && typeof n.text === "string")
@@ -698,10 +710,32 @@ function videoIdFrom(raw) {
   return null;
 }
 
+/* Where a queued link comes from.
+   Two players, one queue. Everything downstream — the shared clock, pause,
+   seek, the skip rule — works the same either way; only the thing that
+   actually makes the sound differs, so a track carries which kind it is and
+   the page builds the matching player. */
+function sourceFrom(raw) {
+  const v = String(raw || "").trim();
+  const yt = videoIdFrom(v);
+  if (yt) return { kind: "yt", videoId: yt, url: "" };
+
+  // soundcloud.com/artist/track, plus the m. and on. short forms
+  const sc = v.match(
+    /^https?:\/\/(?:(?:www|m)\.)?soundcloud\.com\/[\w.-]+\/[\w.-]+(?:\/s-[\w-]+)?/i
+  ) || v.match(/^https?:\/\/on\.soundcloud\.com\/[\w-]+/i);
+  if (sc) return { kind: "sc", videoId: "", url: sc[0] };
+
+  return null;
+}
+
 function musicView() {
   return {
     queue: state.music.queue.map(t => ({
-      id: t.id, videoId: t.videoId, title: t.title, by: t.by, token: t.token
+      // kind and url travel with it, or the page cannot tell which player a
+      // queued track needs until it starts
+      id: t.id, kind: t.kind || "yt", videoId: t.videoId, url: t.url || "",
+      title: t.title, by: t.by, token: t.token
     })),
     playing: state.music.playing
   };
@@ -788,7 +822,8 @@ const SONG_LEAD = 2500;
 function startNext() {
   const next = state.music.queue.shift();
   state.music.playing = next
-    ? { id: next.id, videoId: next.videoId, title: next.title, by: next.by,
+    ? { id: next.id, kind: next.kind || "yt", videoId: next.videoId, url: next.url || "",
+        title: next.title, by: next.by,
         token: next.token, startedAt: Date.now() + SONG_LEAD,
         duration: next.duration || 0, paused: false, at: 0 }
     : null;
@@ -1186,11 +1221,15 @@ io.on("connection", socket => {
         return;
       }
       case "music-add": {
-        const videoId = videoIdFrom(a.url);
+        const src = sourceFrom(a.url);
         const token = clean(a.token, 64);
-        if (!videoId || !token) return;
+        if (!src || !token) {
+          if (token) socket.emit("addsongfail", {});
+          return;
+        }
         if (state.music.queue.length >= 100) return;
-        const item = { id: uid(), videoId, title: "", by, token, at: Date.now() };
+        const item = { id: uid(), kind: src.kind, videoId: src.videoId, url: src.url,
+                       title: "", by, token, at: Date.now() };
         state.music.queue.push(item);
         if (!state.music.playing) startNext();
         musicNote(`${by} queued a song`);
@@ -1465,6 +1504,25 @@ io.on("connection", socket => {
         list.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
+        return;
+      }
+      case "person-level": {
+        /* What level this character is, so the board can tell whether they can
+           farm here. Owner only, same as renaming. 0 clears it, and a name with
+           no level is shown everywhere rather than being guessed at. */
+        const area = areaOf(region);
+        const p = findPerson(a.id, area);
+        const token = clean(a.token, 64);
+        if (!p) return;
+        if (p.claimedBy && p.claimedBy !== token) return;
+        const raw = Math.round(Number(a.level));
+        const lvl = isFinite(raw) && raw > 0 ? Math.max(1, Math.min(999, raw)) : 0;
+        if (lvl === (p.level || 0)) return;
+        p.level = lvl;
+        note(region, lvl ? `${p.name} is level ${lvl}` : `${p.name}'s level cleared`);
+        persist();
+        broadcastRoster();
+        regionsIn(area).forEach(broadcast);
         return;
       }
       case "person-rename": {

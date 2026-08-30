@@ -313,6 +313,33 @@
   .lockic svg{width:11px;height:11px;display:block}
   .lockic.me{color:var(--cyan)}
   .chip.placed{opacity:.62;cursor:default}
+  .plevel{
+    flex:none;padding:2px 5px;border-radius:5px;cursor:pointer;
+    font:inherit;font-size:9.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--dim);background:var(--raise);border:1px solid var(--line);
+  }
+  .plevel:hover{color:var(--cyan);border-color:rgba(34,211,238,.45)}
+  .plevel.unset{color:#3d4d5e;border-style:dashed}
+  .pstar{
+    flex:none;padding:0 2px;line-height:1;font-size:12px;cursor:pointer;
+    background:none;border:0;color:#3d4d5e;
+  }
+  .pstar:hover{color:var(--amber)}
+  .pstar.on{color:var(--amber)}
+  .pmeta.off{color:#5f7285;font-style:italic}
+  .bench-more{
+    width:100%;margin-top:6px;padding:8px;border-radius:8px;cursor:pointer;
+    font:inherit;font-size:10.5px;letter-spacing:.06em;
+    color:var(--dim);background:none;border:1px dashed #26374a;
+  }
+  .bench-more:hover{color:var(--text);border-color:#2d3f52}
+  .benchfind{
+    width:100%;margin:0 0 7px;padding:7px 9px;border-radius:8px;
+    font:inherit;font-size:12px;color:var(--text);
+    background:var(--raise);border:1px solid var(--line);
+  }
+  .benchfind:focus{outline:none;border-color:rgba(34,211,238,.5)}
+  .benchfind::placeholder{color:#4a5f74}
   /* on a channel, but not on this board — still yours to move */
   .chip.elsewhere{opacity:1}
   .chip.elsewhere .pmeta.away{color:var(--cyan);opacity:.9}
@@ -963,6 +990,13 @@
     line-height:1.3;word-break:break-word;
   }
   .now-by{margin-top:3px;font-size:10px;color:var(--dim)}
+  /* the SoundCloud widget draws its own artwork and controls, so it is shown
+     rather than tucked away like the video player */
+  .sc-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#0b131c}
+  .sc-holder[hidden]{display:none}
+  .sc-holder iframe{display:block;width:100%;height:166px;border:0}
+  .drawer.size-l .sc-holder iframe{height:300px}
+
   .yt-holder{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
   .yt-holder[hidden]{display:none}
   /* 16:9 off the actual width, rather than a height that only suits one size */
@@ -1715,6 +1749,8 @@
         <button class="bench-fold" id="benchFold" aria-label="Show or hide the names"></button>
         <button class="ghost bench-add" id="benchAdd">+ add</button>
       </div>
+      <input class="benchfind" id="benchFind" placeholder="find a name" maxlength="24"
+             aria-label="Find a player">
       <div class="bench-body" id="bench"></div>
     </section>
   </div>
@@ -1830,6 +1866,7 @@
       <div class="now-title" id="nowTitle">nothing yet</div>
       <div class="now-by" id="nowBy"></div>
       <div class="yt-holder" id="ytHolder" hidden><div id="ytPlayer"></div></div>
+      <div class="sc-holder" id="scHolder" hidden></div>
       <div class="bgvid-row" id="wallRow" hidden>
         <button class="ghost wall-btn" id="wallBtn" title="Use the playing video as the page background">video wallpaper: off</button>
       </div>
@@ -1840,7 +1877,7 @@
     </div>
 
     <div class="drawer-add">
-      <input id="songInput" placeholder="paste a YouTube link" maxlength="200" aria-label="YouTube link">
+      <input id="songInput" placeholder="paste a YouTube or SoundCloud link" maxlength="200" aria-label="YouTube or SoundCloud link">
       <button class="ghost" id="songAdd">add</button>
     </div>
 
@@ -2575,17 +2612,17 @@ const HELP_HTML = `
      with room for your whole group ranks above a higher burning one.</p>
 
   <h5>PLAYERS BOX</h5>
-  <p>Names you add are yours to rename, recolour and remove. Click one then a channel.</p>
+  <p>Names you add are yours to rename, recolour and remove.</p>
   <p>The <span class="k">dot</span> opens colours — up to three, blended.
      <span class="k">FILL FROM THE FIRST</span> builds a set from one; the slider widens it.
      Nothing applies until you press apply.</p>
 
   <h5>MUSIC</h5>
-  <p>Paste a YouTube link. Everyone hears the same moment; only whoever queued a song can
-     skip it.</p>
+  <p>Paste a YouTube or SoundCloud link. Everyone hears the same moment; only whoever
+     queued a song can skip it.</p>
   <p><span class="k">listen</span> turns your sound on, <span class="k">size</span> steps the
-     box, and its header drags. <span class="k">video wallpaper</span> puts the video behind
-     the page.</p>
+     box, and its header drags. <span class="k">video wallpaper</span> puts a YouTube video
+     behind the page.</p>
   <p><span class="k">N listening</span> shows who has it on; <span class="k">✕</span> turns
      theirs off.</p>
 
@@ -4032,6 +4069,36 @@ function openColorMenu(anchor, person){
 }
 
 
+/* Which levels can farm the board you are looking at. */
+function boardLevels(){
+  const r = regionList.find(x => x.id === region);
+  return (r && Array.isArray(r.levels)) ? r.levels : [];
+}
+
+/* Can this character be here?
+   Unknown level counts as yes — four RD boards share one people list, and
+   somebody who has not filled their level in should never quietly vanish from
+   a board they might well belong on. */
+function fitsHere(p){
+  const want = boardLevels();
+  if(!want.length || !p.level) return true;
+  return want.indexOf(p.level) !== -1;
+}
+
+// your usual crowd, kept per browser: it is your list, not the board's
+let starred = new Set();
+try { starred = new Set(JSON.parse(localStorage.getItem("ct:stars") || "[]")) } catch(e){}
+function saveStars(){
+  try { localStorage.setItem("ct:stars", JSON.stringify([...starred])) } catch(e){}
+}
+
+let benchFind = "";
+setTimeout(() => {
+  const box = document.getElementById("benchFind");
+  if(box) box.addEventListener("input", () => { benchFind = box.value; renderBench(); });
+}, 0);
+let showOthers = false;
+
 function renderBench(){
   if(!benchEl) return;
   const roster = rosters[myArea()] || [];
@@ -4043,7 +4110,29 @@ function renderBench(){
     benchEl.appendChild(e);
   }
 
-  roster.forEach(p => {
+  /* Sorted, never hidden. Starred first, then whoever can farm this board,
+     then the rest tucked behind a heading. The search box narrows by name
+     across the lot, because finding somebody must not depend on their level. */
+  const find = benchFind.trim().toLowerCase();
+  const shown = find ? roster.filter(p => p.name.toLowerCase().includes(find)) : roster;
+  const rank = p => (starred.has(p.id) ? 0 : (fitsHere(p) ? 1 : 2));
+  // by rank only: sort is stable, so within each group the server's own
+  // alphabetical order is left exactly as it was
+  const ordered = shown.slice().sort((x, y) => rank(x) - rank(y));
+  const others = ordered.filter(p => rank(p) === 2);
+  const main = ordered.filter(p => rank(p) !== 2);
+
+  if(shown.length && !main.length && !showOthers){
+    const e = document.createElement("div");
+    e.className = "bench-empty";
+    e.textContent = find ? "Nobody by that name here." : "Nobody at this board's level.";
+    benchEl.appendChild(e);
+  }
+
+  const drawAll = main.slice();
+  if(showOthers) drawAll.push.apply(drawAll, others);
+
+  drawAll.forEach(p => {
     const at = placementOf(p.id);
     /* Greyed out only on the board they are actually standing on. Seen from
        any other board in the area they are draggable, and dropping them on a
@@ -4053,6 +4142,7 @@ function renderBench(){
     const here = !!at && at.region === region;
     // a name belongs to whoever added it, so there's nothing to press
     const mine = myIds.has(p.id);
+    const isOther = rank(p) === 2;
     const plit = p.color ? glowInk(p.color) : null;
     const pcols = p.color ? inkStops(p.color, p.color2, p.color3) : [];
     const plit2 = pcols.length > 1 ? pcols[pcols.length - 1] : null;
@@ -4117,7 +4207,13 @@ function renderBench(){
 
     // one slot on the right: where they're sitting, or else who owns the name
     const meta = document.createElement("span");
-    meta.className = "pmeta" + (at ? " where" : "") + (at && !here ? " away" : "");
+    meta.className = "pmeta" + (at ? " where" : "") + (at && !here ? " away" : "")
+      + (isOther ? " off" : "");
+    if(!at && p.level){
+      meta.textContent = "Lv" + p.level;
+      meta.title = p.name + " is level " + p.level
+        + (isOther ? " — cannot farm " + region : "");
+    }
     if(at){
       meta.textContent = at.region + " " + chLabel(at.idx).replace("CH ", "CH");
       meta.title = here
@@ -4178,8 +4274,56 @@ function renderBench(){
       chip.appendChild(shut);
     }
 
+    /* What level this character is. Only whoever added the name can set it,
+       same as everything else about it. Left blank it shows on every board,
+       which is the safe default — four boards share this list. */
+    if(!p.claimedBy || mine){
+      const lv = document.createElement("button");
+      lv.className = "plevel" + (p.level ? "" : " unset");
+      lv.textContent = p.level ? String(p.level) : "lv";
+      lv.title = p.level
+        ? p.name + " is level " + p.level + " — click to change"
+        : "Set " + p.name + "'s level, so they sort to the boards they can farm";
+      lv.onclick = ev => {
+        ev.stopPropagation();
+        const v = prompt("What level is " + p.name + "? Leave empty to clear it.",
+                         p.level ? String(p.level) : "");
+        if(v === null) return;
+        const n = Math.round(Number(String(v).trim()));
+        send({ type:"person-level", id:p.id, token:myToken,
+               level: isFinite(n) && n > 0 ? n : 0 });
+      };
+      chip.appendChild(lv);
+    }
+
+    /* Your usual crowd, pinned to the top of your own list. Kept in this
+       browser rather than on the board: whose five matter depends on who is
+       looking. Last in the row so the name, where they are and the buttons
+       all keep the places people already know. */
+    const star = document.createElement("button");
+    star.className = "pstar" + (starred.has(p.id) ? " on" : "");
+    star.textContent = starred.has(p.id) ? "\u2605" : "\u2606";
+    star.title = (starred.has(p.id) ? "Unpin " : "Pin ") + p.name
+      + (starred.has(p.id) ? " from" : " to") + " the top of your list";
+    star.onclick = ev => {
+      ev.stopPropagation();
+      if(starred.has(p.id)) starred.delete(p.id); else starred.add(p.id);
+      saveStars();
+      renderBench();
+    };
+    chip.appendChild(star);
+
     benchEl.appendChild(chip);
   });
+
+  // everybody who cannot farm this board, one tap away rather than gone
+  if(others.length){
+    const more = document.createElement("button");
+    more.className = "bench-more" + (showOthers ? " open" : "");
+    more.textContent = (showOthers ? "hide " : "") + "other levels (" + others.length + ")";
+    more.onclick = () => { showOthers = !showOthers; renderBench(); };
+    benchEl.appendChild(more);
+  }
 
   document.querySelector(".bench").classList.toggle("armed", !!pickedPerson);
   const title = document.getElementById("benchTitle");
@@ -4205,6 +4349,16 @@ document.getElementById("benchAdd").onclick = () => {
   pendingAdd = { name, was: me };
   setMe(name);
   send({ type:"person-add", name, token: myToken });
+  /* Ask the level while they are here. Skippable — a name with no level shows
+     on every board, so nothing is blocked by leaving it blank. */
+  setTimeout(() => {
+    const v = prompt("What level is " + name + "? (optional — press cancel to skip)", "");
+    if(v === null) return;
+    const n = Math.round(Number(String(v).trim()));
+    if(!isFinite(n) || n <= 0) return;
+    const p = (rosters[myArea()] || []).find(x => x.name === name);
+    if(p) send({ type:"person-level", id:p.id, token:myToken, level:n });
+  }, 400);
   // it's yours from the moment you add it, so remember it locally too
   myClaimNames.add(name.toLowerCase());
   saveClaimNames();
@@ -4860,6 +5014,11 @@ document.getElementById("noticeHead").onclick = () => {
    than leaving somebody with a name that looks like theirs but is not. */
 let pendingAdd = null;
 /* Somebody tried to skip a song that is not theirs. */
+/* The link was neither a YouTube nor a SoundCloud one. */
+socket.on("addsongfail", () => {
+  toast("That link isn't one I can play — YouTube or SoundCloud only.", true);
+});
+
 socket.on("skipdenied", info => {
   toast("Only " + ((info && info.by) || "whoever queued it") + " can skip this one.", true);
 });
@@ -5887,7 +6046,10 @@ function killBgPlayer(){
    public/img/ — the html.yt-bg rule kills .bgmedia with !important — and then
    put nothing behind it, so the page just went black. */
 function wallLive(){
-  return vidWall && listening && !!(music.playing && music.playing.videoId);
+  // only a YouTube track has a picture; a SoundCloud one leaves your own
+  // background in place rather than blanking the page
+  const cur = music.playing;
+  return vidWall && listening && !!(cur && kindOf(cur) === "yt" && cur.videoId);
 }
 
 function syncBgPlayer(){
@@ -5943,8 +6105,13 @@ function paintWall(){
   // never display:none the player — that stops playback dead. it also stays put
   // when the artwork is on: the art is behind the whole drawer now, so the two
   // aren't after the same box and nothing has to move out of the way.
+  /* Show whichever player is actually in use. Both exist in the markup, but
+     only one is ever built, so the other must not leave an empty box behind. */
+  const sc = music.playing && kindOf(music.playing) === "sc";
   const holder = document.getElementById("ytHolder");
-  if(holder) holder.hidden = !listening;
+  if(holder) holder.hidden = !listening || sc;
+  const scBox = document.getElementById("scHolder");
+  if(scBox) scBox.hidden = !listening || !sc;
   syncBgPlayer();
 }
 wallBtn.onclick = () => {
@@ -6085,6 +6252,8 @@ function ensurePlayer(){
 // so it stays alive and simply stops
 function stopPlayer(){
   ytWanted = null;
+  try { if(scWidget && scWidget.pause) scWidget.pause(); } catch(e){}
+  killSc();                                  // whichever was playing, stop it
   if(!ytPlayer) return;
   try { if(ytPlayer.stopVideo) ytPlayer.stopVideo(); } catch(e){}
 }
@@ -6161,8 +6330,138 @@ function expectedOffset(cur){
 }
 
 let ytVideo = null;      // what's actually loaded in the player
+/* ---------------- SoundCloud ----------------
+   A second player behind the same queue. Everything the room shares — the
+   clock, pause, the skip rule, who queued what — is untouched; only the thing
+   making the sound differs. Its widget answers position and duration through
+   callbacks rather than return values, so the latest of each is kept here for
+   whatever needs to read one straight away. */
+let scWidget = null, scWanted = null, scUrl = null;
+let scPosMs = 0, scDurMs = 0, scIsPlaying = false;
+
+function kindOf(t){ return (t && t.kind) || "yt"; }
+
+function killSc(){
+  scWidget = null;
+  scWanted = null; scUrl = null;
+  scPosMs = 0; scDurMs = 0; scIsPlaying = false;
+  const box = document.getElementById("scHolder");
+  if(box) box.innerHTML = "";
+}
+
+function ensureScApi(cb){
+  if(window.SC && window.SC.Widget) return cb();
+  if(!document.getElementById("scApi")){
+    const tag = document.createElement("script");
+    tag.id = "scApi";
+    tag.src = "https://w.soundcloud.com/player/api.js";
+    document.head.appendChild(tag);
+  }
+  // the script has no ready callback of its own, so wait for it to appear
+  let tries = 0;
+  const t = setInterval(() => {
+    if(window.SC && window.SC.Widget){ clearInterval(t); cb(); }
+    else if(++tries > 100) clearInterval(t);      // ~20s, then give up quietly
+  }, 200);
+}
+
+function buildSc(cur, at){
+  const box = document.getElementById("scHolder");
+  if(!box) return;
+  box.innerHTML = "";
+  const f = document.createElement("iframe");
+  f.id = "scFrame";
+  f.allow = "autoplay";
+  f.setAttribute("scrolling", "no");
+  f.setAttribute("frameborder", "no");
+  f.src = "https://w.soundcloud.com/player/?url=" + encodeURIComponent(cur.url)
+    + "&auto_play=true&show_artwork=true&show_comments=false&sharing=false"
+    + "&buying=false&download=false&single_active=false";
+  box.appendChild(f);
+
+  ensureScApi(() => {
+    if(!window.SC || !window.SC.Widget) return;
+    const w = window.SC.Widget(f);
+    scWidget = w;
+    const E = window.SC.Widget.Events;
+
+    w.bind(E.READY, () => {
+      w.getDuration(d => {
+        scDurMs = d || 0;
+        if(scDurMs) musicAction({ type:"music-duration", id: cur.id,
+                                  seconds: Math.round(scDurMs / 1000) });
+      });
+      w.getCurrentSound(snd => {
+        const title = snd && (snd.title || "");
+        if(title) musicAction({ type:"music-title", id: cur.id, title });
+      });
+      if(at > 1) w.seekTo(Math.floor(at) * 1000);
+      if(!cur.paused) w.play();
+    });
+
+    w.bind(E.PLAY_PROGRESS, e => {
+      if(e && typeof e.currentPosition === "number") scPosMs = e.currentPosition;
+    });
+    w.bind(E.PLAY, () => { scIsPlaying = true; });
+    w.bind(E.PAUSE, () => { scIsPlaying = false; });
+
+    w.bind(E.FINISH, () => {
+      // the real end of the track — the only thing that moves the queue on
+      if(music.playing && music.playing.id === cur.id){
+        musicAction({ type:"music-ended", id: cur.id });
+      }
+    });
+
+    w.bind(E.ERROR, () => {
+      /* Your widget broke — that is about your browser, not the track. Say so
+         to you and leave the room alone, exactly as the YouTube side does. */
+      if(music.playing && music.playing.id === cur.id){
+        toast("This track will not play in your browser — everyone else is fine. "
+          + "The uploader may have embedding turned off.", true);
+      }
+    });
+  });
+}
+
+function syncSc(cur){
+  const want = expectedOffset(cur);
+
+  if(scWanted !== cur.id || scUrl !== cur.url){
+    scWanted = cur.id;
+    scUrl = cur.url;
+    scPosMs = 0; scDurMs = 0;
+    buildSc(cur, want);
+    return;
+  }
+  if(!scWidget) return;
+
+  try {
+    if(cur.paused && scIsPlaying){ scWidget.pause(); scWidget.seekTo(Math.floor(want) * 1000); }
+    else if(!cur.paused && !scIsPlaying){ scWidget.play(); }
+  } catch(e){}
+  if(cur.paused) return;
+
+  /* Catch this browser up to the room if it has drifted. One way only: the
+     laggard follows, and nothing here ever drags everyone else back. */
+  const at = scPosMs / 1000;
+  if(scPosMs && Math.abs(at - want) > 3){
+    try { scWidget.seekTo(Math.floor(want) * 1000); } catch(e){}
+  }
+}
+
 function syncPlayer(){
   if(!listening) return;
+
+  // the right player for whatever is on: only one exists at a time
+  const now = music.playing;
+  if(now && kindOf(now) === "sc"){
+    if(ytPlayer) killPlayer();
+    syncBgPlayer();
+    syncSc(now);
+    return;
+  }
+  if(scWidget || scWanted) killSc();
+
   if(!ytPlayer){ ensurePlayer(); return; }
 
   const cur = music.playing;
