@@ -263,6 +263,20 @@
     border:1px solid rgba(245,158,11,.65);
     box-shadow:0 0 14px -6px rgba(245,158,11,.9);
   }
+  /* once you have a name the main button renames it, and this adds another —
+     so nobody has to delete themselves and get shut out to change a name */
+  /* says what it is rather than leaving a bare + to be guessed at — a tooltip
+     is no use on a phone, which is where most of this gets read */
+  .bench-more-btn{
+    flex:none;order:7;margin:4px 0 0 6px;
+    display:grid;place-items:center;white-space:nowrap;
+    padding:10px 12px;border-radius:9px;font-size:11.5px;font-weight:700;
+    letter-spacing:.02em;
+    color:var(--dim);background:var(--raise);border:1px solid var(--line);
+  }
+  .bench-more-btn[hidden]{display:none}
+  .bench-more-btn:hover{color:var(--cyan);border-color:rgba(34,211,238,.5)}
+  .bench .bench-add.editing{flex:1 0 auto;width:auto}
   .bench .bench-add:hover{
     color:#fbbf24;background:rgba(245,158,11,.18);
     border-color:rgba(245,158,11,.9);
@@ -1104,7 +1118,7 @@
      as broken rather than as a rule. One door instead of forty locked drawers. */
   .gate{
     position:fixed;inset:0;z-index:200;display:grid;place-items:center;
-    padding:20px;background:rgba(4,8,13,.94);
+    padding:20px;background:rgba(4,8,13,.86);
   }
   .gate[hidden]{display:none}
   .gate-box{
@@ -1131,7 +1145,12 @@
      position:fixed into position:absolute against that ancestor — so the gate
      was both blurred and trapped inside the page's own width. */
   html.nameless .wrap,
-  html.nameless .drawer{pointer-events:none;user-select:none;filter:blur(3px)}
+  html.nameless .drawer{
+    /* hard enough that no name, message or channel can be picked out — the
+       shape of the page is all that shows through */
+    pointer-events:none;user-select:none;
+    filter:blur(16px) saturate(.5) brightness(.55);
+  }
 
   /* ---------------- the announcement ----------------
      Sits under the header, above everything else, so it is the first thing
@@ -1814,6 +1833,9 @@
         <span class="bench-hint" id="benchHint">drag, or click then click a channel</span>
         <button class="bench-fold" id="benchFold" aria-label="Show or hide the names"></button>
         <button class="ghost bench-add" id="benchAdd">+ add</button>
+        <button class="ghost bench-more-btn" id="benchPlus"
+                title="Put a second character on the board — for people who farm on more than one"
+                hidden>+ another</button>
       </div>
       <input class="benchfind" id="benchFind" placeholder="find a name" maxlength="24"
              aria-label="Find a player">
@@ -1875,7 +1897,8 @@
         <div class="set-group">
           <h5>SOUND</h5>
           <div class="set-row">
-            <button class="ghost" id="soundBtn" title="Alert sound for the 40 minute timer">🔊 alert: on</button>
+            <button class="ghost" id="soundBtn" title="Sound when a channel hits 40 minutes">🔊 40 min: on</button>
+            <button class="ghost" id="mvpSoundBtn" title="Sound when somebody calls MVP">🔊 MVP: on</button>
           </div>
         </div>
         <div class="set-group" id="projGroup">
@@ -2835,8 +2858,17 @@ document.addEventListener("keydown", e => { if(e.key === "Escape") closeHelp(); 
 try { if(!localStorage.getItem("ct:seenhelp")) setTimeout(openHelp, 700) } catch(e){}
 
 /* ---------------- alert sound + tab flashing ---------------- */
-let soundOn = true;
-try { soundOn = localStorage.getItem("ct:sound") !== "off" } catch(e){}
+/* Two alarms, two switches.
+   They interrupt different things — one says a channel is up, the other that
+   somebody wants everybody now — and people want them separately. The old
+   single setting decides both the first time, so nobody's choice is lost. */
+let soundOn = true, mvpSoundOn = true;
+try {
+  const was = localStorage.getItem("ct:sound");
+  soundOn = localStorage.getItem("ct:sound40") !== "off" && was !== "off";
+  const mv = localStorage.getItem("ct:soundmvp");
+  mvpSoundOn = mv !== null ? mv !== "off" : was !== "off";
+} catch(e){}
 
 let audioCtx = null;
 let pendingAlarm = false;
@@ -2892,7 +2924,7 @@ function beep(startAt){
 }
 // two-tone, four bursts — deliberately different from the timer chime
 function mvpAlarm(){
-  if(!soundOn) return;
+  if(!mvpSoundOn) return;
   primeAudio();
   if(!audioCtx || audioCtx.state !== "running"){
     pendingAlarm = true;
@@ -3196,6 +3228,16 @@ socket.on("roster", obj => {
   recomputeMine();
   recomputeColors();
   reclaimMine();
+
+  /* Your name is only yours while the list agrees.
+     Delete your own character — or have it removed — and the board would
+     otherwise keep letting you in on a name nothing backs any more. If none of
+     the entries are claimed by this browser, you are back outside. */
+  if(hasName() && Array.isArray(rosters.ALL)
+     && !rosters.ALL.some(p => p.claimedBy && p.claimedBy === myToken)){
+    applyMe("Guest", me);
+    toast("Your name is gone from the list — add one to come back in.", true);
+  }
   renderBench();
   // the tab row hides boards none of your characters can farm, and it can only
   // know that once the roster has arrived — it runs before this on connect
@@ -4523,9 +4565,49 @@ function renderBench(){
   if(title) title.textContent = "Players (" + roster.length + ")";
   if(typeof fitBench === "function") fitBench();   // its height just changed
   if(typeof paintJump === "function") paintJump();
+  if(typeof paintBenchAdd === "function") paintBenchAdd();
   document.getElementById("benchHint").textContent = pickedPerson
     ? "now click the channel to put them on"
     : "drag, or click then click a channel";
+}
+
+/* Which of your own characters the edit button acts on. */
+function myFirstChar(){
+  return (rosters.ALL || []).find(p => p.claimedBy && p.claimedBy === myToken) || null;
+}
+
+/* Rename in place. Deleting yourself and adding again works, but it drops you
+   out to the door in between, which reads as having broken something. */
+function renamePersonFlow(){
+  const p = myFirstChar();
+  if(!p) return addPersonFlow();
+  const v = prompt("Change " + p.name + " to what?", p.name);
+  if(v === null) return;
+  const name = String(v).trim().slice(0, 24);
+  if(!name || name === p.name) return;
+  if(isGuest(name)){
+    toast("“Guest” isn't a name — pick something people will recognise", true);
+    return;
+  }
+  send({ type:"person-rename", id: p.id, name, token: myToken });
+  applyMe(name, me);          // the board calls you this from now on
+  myClaimNames.add(name.toLowerCase());
+  saveClaimNames();
+}
+
+/* The main button renames once you have a name, and adds when you do not. */
+function paintBenchAdd(){
+  const add = document.getElementById("benchAdd");
+  const plus = document.getElementById("benchPlus");
+  if(!add) return;
+  const mine = myFirstChar();
+  add.textContent = mine ? "\u270e edit name" : "+ add";
+  add.title = mine
+    ? "Change " + mine.name + " — no need to remove yourself first"
+    : "Put your name on the board";
+  add.classList.toggle("editing", !!mine);
+  add.onclick = mine ? renamePersonFlow : addPersonFlow;
+  if(plus) plus.hidden = !mine;
 }
 
 function addPersonFlow(){
@@ -4554,8 +4636,9 @@ function addPersonFlow(){
     if(window.Notification && Notification.permission === "default") Notification.requestPermission();
   } catch(e){}
 }
-document.getElementById("benchAdd").onclick = addPersonFlow;
+document.getElementById("benchPlus").onclick = addPersonFlow;
 document.getElementById("gateAdd").onclick = addPersonFlow;
+paintBenchAdd();
 
 /* ---------------- channel filters ----------------
    Filtering never renumbers anything: CH12 stays CH12, the matching cards
@@ -5610,17 +5693,31 @@ bgBtn.onclick = () => {
 paintBg();
 
 const soundBtn = document.getElementById("soundBtn");
-function paintSound(){ soundBtn.textContent = soundOn ? "🔊 alert: on" : "🔇 alert: off" }
+const mvpSoundBtn = document.getElementById("mvpSoundBtn");
+function paintSound(){
+  soundBtn.textContent = soundOn ? "🔊 40 min: on" : "🔇 40 min: off";
+  mvpSoundBtn.textContent = mvpSoundOn ? "🔊 MVP: on" : "🔇 MVP: off";
+}
 paintSound();
+
+// a note when you switch one on, so you know which you just changed
+function tryNote(){
+  primeAudio();
+  setTimeout(() => { if(audioCtx && audioCtx.state === "running") beep(audioCtx.currentTime) }, 120);
+}
+
 soundBtn.onclick = () => {
   soundOn = !soundOn;
-  try { localStorage.setItem("ct:sound", soundOn ? "on" : "off") } catch(e){}
+  try { localStorage.setItem("ct:sound40", soundOn ? "on" : "off") } catch(e){}
   paintSound();
-  if(soundOn){
-    primeAudio();
-    // resume() is async, so give it a moment before the test note
-    setTimeout(() => { if(audioCtx && audioCtx.state === "running") beep(audioCtx.currentTime) }, 120);
-  }
+  if(soundOn) tryNote();
+};
+
+mvpSoundBtn.onclick = () => {
+  mvpSoundOn = !mvpSoundOn;
+  try { localStorage.setItem("ct:soundmvp", mvpSoundOn ? "on" : "off") } catch(e){}
+  paintSound();
+  if(mvpSoundOn) tryNote();
 };
 
 /* ---------------- 40 minute channel alert ----------------
