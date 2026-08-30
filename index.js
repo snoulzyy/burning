@@ -1529,7 +1529,25 @@ io.on("connection", socket => {
         const area = areaOf(region);
         const p = findPerson(a.id, area);
         const name = clean(a.name, 24);
+        const token = clean(a.token, 64);
         if (!p || !name || name === p.name) return;
+        /* Two holes here, both of which had shown up on the board.
+           Renaming checked nothing: not who was asking, so anybody could
+           rename anybody's character; and not whether the name was already
+           taken, which is how a "brown" and a "Brown" ended up side by side
+           when adding one would have been refused. Adding has always checked
+           both, and renaming is the same act by another route. */
+        if (p.claimedBy && p.claimedBy !== token) {
+          socket.emit("renamefail", { name, by: p.claimedName || "", owner: true });
+          return;
+        }
+        if (nameless(name)) return;
+        const clash = (state.rosters[area] || []).find(
+          x => x.id !== p.id && x.name.toLowerCase() === name.toLowerCase());
+        if (clash) {
+          socket.emit("renamefail", { name, by: clash.claimedName || "" });
+          return;
+        }
         p.name = name;
         regionsIn(area).forEach(r => state[r].channels.forEach(c =>
           c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));

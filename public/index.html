@@ -174,7 +174,7 @@
   /* ---------------- bench ---------------- */
   /* stretch, not start: the sidebar's column takes the height of the board
      beside it, so the panel can fill it instead of sitting as a short box */
-  .board-area{display:grid;grid-template-columns:246px minmax(0,1fr);gap:14px;align-items:stretch}
+  .board-area{display:grid;grid-template-columns:288px minmax(0,1fr);gap:14px;align-items:stretch}
   .board-side{min-width:0}
   /* a flex column so .bench can flex:1 into it — percentage heights inside a
      grid item are not reliable, this is */
@@ -340,6 +340,13 @@
   }
   .benchfind:focus{outline:none;border-color:rgba(34,211,238,.5)}
   .benchfind::placeholder{color:#4a5f74}
+  .benchlv{
+    width:100%;margin:0 0 8px;padding:6px 8px;border-radius:8px;cursor:pointer;
+    font:inherit;font-size:11px;color:var(--dim);
+    background:var(--raise);border:1px solid var(--line);
+  }
+  .benchlv:focus{outline:none;border-color:rgba(34,211,238,.5)}
+  .benchlv.on{color:var(--cyan);border-color:rgba(34,211,238,.4)}
   /* on a channel, but not on this board — still yours to move */
   .chip.elsewhere{opacity:1}
   .chip.elsewhere .pmeta.away{color:var(--cyan);opacity:.9}
@@ -1724,7 +1731,6 @@
     <div class="headright">
       <div class="tabsWrap">
         <nav class="tabs" id="tabs"></nav>
-        <button class="tabsbar" id="tabsBar" title="Choose which tabs to show" aria-label="Choose tabs"></button>
       </div>
     </div>
   </header>
@@ -1751,6 +1757,10 @@
       </div>
       <input class="benchfind" id="benchFind" placeholder="find a name" maxlength="24"
              aria-label="Find a player">
+      <select class="benchlv" id="benchLv" aria-label="Which levels to show">
+        <option value="here">this board's levels</option>
+        <option value="all">everyone</option>
+      </select>
       <div class="bench-body" id="bench"></div>
     </section>
   </div>
@@ -4096,6 +4106,16 @@ let benchFind = "";
 setTimeout(() => {
   const box = document.getElementById("benchFind");
   if(box) box.addEventListener("input", () => { benchFind = box.value; renderBench(); });
+  const lv = document.getElementById("benchLv");
+  if(lv){
+    try { showOthers = localStorage.getItem("ct:showall") === "1" } catch(e){}
+    lv.value = showOthers ? "all" : "here";
+    lv.addEventListener("change", () => {
+      showOthers = lv.value === "all";
+      try { localStorage.setItem("ct:showall", showOthers ? "1" : "0") } catch(e){}
+      renderBench();
+    });
+  }
 }, 0);
 let showOthers = false;
 
@@ -4131,6 +4151,17 @@ function renderBench(){
 
   const drawAll = main.slice();
   if(showOthers) drawAll.push.apply(drawAll, others);
+
+  // the dropdown says how many are being held back, so it is never a mystery
+  const lvSel = document.getElementById("benchLv");
+  if(lvSel){
+    const opt = lvSel.options[0];
+    const lvls = boardLevels();
+    opt.textContent = lvls.length
+      ? "this board only (lv " + lvls.join("/") + ")" + (others.length ? " — " + others.length + " hidden" : "")
+      : "this board only";
+    lvSel.classList.toggle("on", !showOthers && others.length > 0);
+  }
 
   drawAll.forEach(p => {
     const at = placementOf(p.id);
@@ -4220,9 +4251,12 @@ function renderBench(){
         ? p.name + " is on " + at.region + " " + chLabel(at.idx)
         : p.name + " is on " + at.region + " " + chLabel(at.idx)
           + " — drop them on a channel here to move them over";
-    } else if(p.claimedBy){
-      meta.textContent = mine ? "you" : (p.claimedName || "claimed");
     }
+    /* Nothing when they are not on a channel.
+       This used to print who claimed the name, which for your own characters
+       is that same name written twice on one row — "Andyo  Andyo" — and for
+       everybody else's repeats what the padlock beside it already says. The
+       slot is for where somebody is, and stays empty when they are nowhere. */
     if(plit && meta.textContent){
       meta.style.color = plit;
       meta.style.opacity = at ? ".9" : ".72";
@@ -4238,40 +4272,6 @@ function renderBench(){
         : "Claimed by " + (p.claimedName || "someone");
       if(plit){ lock.style.color = plit; lock.style.opacity = mine ? "1" : ".7"; }
       chip.appendChild(lock);
-    }
-
-    /* The cross used to hide whenever somebody was on a channel — and that
-       looks across every board in the area, so being on RD4 took it away while
-       you were staring at RD1 wondering where it went. Removing someone lifts
-       them off the channel server-side anyway, so there was never a reason to
-       hide it. */
-    if(!p.claimedBy || mine){
-      const del = document.createElement("button");
-      del.className = "chip-btn drop-btn";
-      del.innerHTML = crossSVG();
-      if(p.color){ del.style.color = glowInk(p.color); del.style.opacity = ".8"; }
-      del.title = at
-        ? "Remove " + p.name + " — takes them off " + at.region + " " + chLabel(at.idx) + " too"
-        : "Remove " + p.name + " from the list";
-      del.onclick = ev => {
-        ev.stopPropagation();
-        const where = at
-          ? "\n\nThey are on " + at.region + " " + chLabel(at.idx) + " and will be taken off it."
-          : "";
-        if(confirm("Remove " + p.name + " from the people list?" + where)){
-          send({ type:"person-remove", id:p.id, token:myToken });
-        }
-      };
-      chip.appendChild(del);
-    } else {
-      /* Somebody else's name. Say whose, rather than leaving a blank space
-         that just reads as broken. */
-      const shut = document.createElement("span");
-      shut.className = "chip-btn locked";
-      shut.innerHTML = crossSVG();
-      shut.title = (p.claimedName || "Somebody else") + " added this name, so only that "
-        + "browser can remove it. Use + add for your own.";
-      chip.appendChild(shut);
     }
 
     /* What level this character is. Only whoever added the name can set it,
@@ -4313,17 +4313,40 @@ function renderBench(){
     };
     chip.appendChild(star);
 
+    /* The cross used to hide whenever somebody was on a channel — and that
+       looks across every board in the area, so being on RD4 took it away while
+       you were staring at RD1 wondering where it went. Removing someone lifts
+       them off the channel server-side anyway, so there was never a reason to
+       hide it. */
+    if(!p.claimedBy || mine){
+      const del = document.createElement("button");
+      del.className = "chip-btn drop-btn";
+      del.innerHTML = crossSVG();
+      if(p.color){ del.style.color = glowInk(p.color); del.style.opacity = ".8"; }
+      del.title = at
+        ? "Remove " + p.name + " — takes them off " + at.region + " " + chLabel(at.idx) + " too"
+        : "Remove " + p.name + " from the list";
+      del.onclick = ev => {
+        ev.stopPropagation();
+        const where = at
+          ? "\n\nThey are on " + at.region + " " + chLabel(at.idx) + " and will be taken off it."
+          : "";
+        if(confirm("Remove " + p.name + " from the people list?" + where)){
+          send({ type:"person-remove", id:p.id, token:myToken });
+        }
+      };
+      chip.appendChild(del);
+    }
+    /* Nothing at all on somebody else's name. There used to be a greyed cross
+       here to explain why you could not remove it, but a cross sitting beside
+       the level button reads as danger whatever colour it is — and it was on
+       every row you did not own, which is most of them. The padlock already
+       says the name is spoken for. */
+
     benchEl.appendChild(chip);
   });
 
-  // everybody who cannot farm this board, one tap away rather than gone
-  if(others.length){
-    const more = document.createElement("button");
-    more.className = "bench-more" + (showOthers ? " open" : "");
-    more.textContent = (showOthers ? "hide " : "") + "other levels (" + others.length + ")";
-    more.onclick = () => { showOthers = !showOthers; renderBench(); };
-    benchEl.appendChild(more);
-  }
+
 
   document.querySelector(".bench").classList.toggle("armed", !!pickedPerson);
   const title = document.getElementById("benchTitle");
@@ -4955,7 +4978,8 @@ function renameMyChips(oldName){
     const reg = regionOfArea(area);
     (rosters[area] || []).forEach(p => {
       if(p.claimedBy !== myToken) return;
-      if(p.name !== me) send({ type:"person-rename", id:p.id, name:me, region:reg });
+      // the server checks ownership on renames now, so it has to be told
+      if(p.name !== me) send({ type:"person-rename", id:p.id, name:me, token:myToken, region:reg });
       send({ type:"claim", pid:p.id, token:myToken, who:me, region:reg });   // refresh who it says claimed it
       // remember the new spelling locally too, so a wipe still reclaims it
       if(oldName) myClaimNames.delete(oldName.trim().toLowerCase());
@@ -5015,6 +5039,19 @@ document.getElementById("noticeHead").onclick = () => {
 let pendingAdd = null;
 /* Somebody tried to skip a song that is not theirs. */
 /* The link was neither a YouTube nor a SoundCloud one. */
+/* A rename that did not go through. */
+socket.on("renamefail", info => {
+  const nm = (info && info.name) || "";
+  if(info && info.owner){
+    toast("Only whoever added that name can rename it"
+      + (info.by ? " — that's " + info.by : "") + ".", true);
+  } else {
+    toast("\u201c" + nm + "\u201d is already on the list"
+      + (info && info.by ? ", added by " + info.by : "")
+      + ". Pick something else.", true);
+  }
+});
+
 socket.on("addsongfail", () => {
   toast("That link isn't one I can play — YouTube or SoundCloud only.", true);
 });
@@ -6126,7 +6163,11 @@ const volRange = document.getElementById("volRange");
 volRange.value = musicVol;
 volRange.addEventListener("input", () => {
   musicVol = parseInt(volRange.value, 10) || 0;
+  // whichever player is making the sound — the slider drove only the YouTube
+  // one before, so a SoundCloud track came in at full blast with nothing to
+  // turn it down
   if(ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(musicVol);
+  applyScVolume();
 });
 volRange.addEventListener("change", () => {
   try { localStorage.setItem("ct:vol", String(musicVol)) } catch(e){}
@@ -6341,6 +6382,11 @@ let scPosMs = 0, scDurMs = 0, scIsPlaying = false;
 
 function kindOf(t){ return (t && t.kind) || "yt"; }
 
+// the widget takes 0-100, same scale as the slider
+function applyScVolume(){
+  try { if(scWidget && scWidget.setVolume) scWidget.setVolume(musicVol); } catch(e){}
+}
+
 function killSc(){
   scWidget = null;
   scWanted = null; scUrl = null;
@@ -6386,6 +6432,7 @@ function buildSc(cur, at){
     const E = window.SC.Widget.Events;
 
     w.bind(E.READY, () => {
+      applyScVolume();                 // before it makes a sound, not after
       w.getDuration(d => {
         scDurMs = d || 0;
         if(scDurMs) musicAction({ type:"music-duration", id: cur.id,
@@ -6402,7 +6449,7 @@ function buildSc(cur, at){
     w.bind(E.PLAY_PROGRESS, e => {
       if(e && typeof e.currentPosition === "number") scPosMs = e.currentPosition;
     });
-    w.bind(E.PLAY, () => { scIsPlaying = true; });
+    w.bind(E.PLAY, () => { scIsPlaying = true; applyScVolume(); });
     w.bind(E.PAUSE, () => { scIsPlaying = false; });
 
     w.bind(E.FINISH, () => {
