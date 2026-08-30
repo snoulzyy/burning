@@ -337,12 +337,22 @@ app.use((req, res, next) => {
 
   res.send = body => {
     if (res.getHeader("Content-Encoding")) return send(body);
-    const buf = Buffer.isBuffer(body) ? body
-      : typeof body === "string" ? Buffer.from(body)
+    const buf = typeof body === "string" ? Buffer.from(body)
+      : Buffer.isBuffer(body) ? body
       : null;
     if (!buf) return send(body);
-    const gz = gzipBuffer(buf, res.getHeader("Content-Type") || "text/html");
+
+    /* Work out the type before compressing, and set it.
+       Handing express a Buffer with no Content-Type makes it guess
+       application/octet-stream — which the browser downloads as a file instead
+       of showing. That is what turned the admin page into a download. */
+    const type = res.getHeader("Content-Type")
+      || (typeof body === "string" ? "text/html; charset=utf-8" : "");
+    if (!type) return send(body);
+
+    const gz = gzipBuffer(buf, type);
     if (!gz) return send(body);
+    res.setHeader("Content-Type", type);
     res.setHeader("Content-Encoding", "gzip");
     res.setHeader("Vary", "Accept-Encoding");
     res.removeHeader("Content-Length");
