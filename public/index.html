@@ -1125,7 +1125,11 @@
     border:1px solid rgba(245,158,11,.7);
   }
   .gate-add:hover{color:#fbbf24;background:rgba(245,158,11,.22)}
-  /* and nothing behind it is reachable, by pointer or by keyboard */
+  /* Nothing behind it is reachable, by pointer or by keyboard.
+     The gate has to live outside .wrap for this to work: a filter on an
+     ancestor blurs its children whatever they ask for, and it also turns
+     position:fixed into position:absolute against that ancestor — so the gate
+     was both blurred and trapped inside the page's own width. */
   html.nameless .wrap,
   html.nameless .drawer{pointer-events:none;user-select:none;filter:blur(3px)}
 
@@ -1792,17 +1796,6 @@
   </header>
 
   <button class="jumpme" id="jumpMe" hidden>jump to me</button>
-  <div class="gate" id="gate" hidden>
-    <div class="gate-box">
-      <h3>WHO ARE YOU?</h3>
-      <p>This board is shared, and everything anyone does on it is logged with
-         a name. Add yours to come in.</p>
-      <button class="gate-add" id="gateAdd">+ add your name</button>
-      <p class="gate-fine">Use the name people know you by in game. You can add
-         more characters once you are in.</p>
-    </div>
-  </div>
-
   <div class="notice" id="notice" hidden>
     <button class="notice-head" id="noticeHead">
       <span class="notice-ic" id="noticeIc"></span>
@@ -1968,6 +1961,17 @@
     <span id="tally"></span>
     <span class="sticker-row" id="stickFoot"></span>
   </footer>
+</div>
+
+<div class="gate" id="gate" hidden>
+  <div class="gate-box">
+    <h3>WHO ARE YOU?</h3>
+    <p>This board is shared, and everything anyone does on it is logged with
+       a name. Add yours to come in.</p>
+    <button class="gate-add" id="gateAdd">+ add your name</button>
+    <p class="gate-fine">Use the name people know you by in game. You can add
+       more characters once you are in.</p>
+  </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

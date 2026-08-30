@@ -605,7 +605,7 @@ function adminPage() {
 
 </section>
 
-<h2 class="two" style="margin-top:20px">DONATE BUTTON</h2>
+<section class="card"><h2>DONATE BUTTON</h2>
 <form class="say" method="GET">
   <input name="donate" maxlength="300" value="${esc(state.donate)}"
          placeholder="https://paypal.me/yourname — leave empty to hide the button">
