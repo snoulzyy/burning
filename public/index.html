@@ -3548,7 +3548,14 @@ function rankChannels(skipIdx){
         soon: full && oldest >= FREEING_MINUTES * 60000
       };
     })
+    /* Never suggest a channel that only some of you fit on.
+       Splitting a three-man group so that one person joins a party of three is
+       not a suggestion anybody wants — it leaves two of you behind on a
+       channel you have just abandoned. A channel with people on it has to have
+       room for the whole group, or it does not belong on this list. An empty
+       one is always fine: you all arrive together. */
     .filter(c => c.idx !== skipIdx && (c.taken < CAP || c.soon))
+    .filter(c => !c.short)
     .map(c => ({
       ...c,
       // same block of 20 as where you are now, then whichever is nearest
@@ -4191,7 +4198,9 @@ setTimeout(() => {
 }, 0);
 function renderBench(){
   if(!benchEl) return;
-  const roster = rosters[myArea()] || [];
+  // one list for the whole site now: a character exists once, and its level
+  // decides which boards it sorts to rather than which list it lives in
+  const roster = rosters.ALL || [];
   benchEl.innerHTML = "";
   if(!roster.length){
     const e = document.createElement("div");
@@ -5882,7 +5891,7 @@ function askLevel(name){
     if(v === null) return;                    // cancelled outright
     const n = Math.round(Number(String(v).trim()));
     if(ok.indexOf(n) !== -1){
-      const p = (rosters[myArea()] || []).find(x => x.name === name);
+      const p = (rosters.ALL || []).find(x => x.name === name);
       if(p) send({ type:"person-level", id:p.id, token:myToken, level:n });
       return;
     }

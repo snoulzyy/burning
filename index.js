@@ -60,11 +60,62 @@ function hydrate(saved) {
 
   // chat and the people list are shared across every region
   if (!Array.isArray(state.chat)) state.chat = [];
-  // one people list per area (RD boards share one, GOB boards share another)
+  /* One people list for the whole site.
+     There used to be one per area, which meant anybody farming both RD and GOB
+     kept two entries for the same character and had to make a third when they
+     levelled into a new area. Now a character exists once and the level says
+     where it can go.
+
+     Merging the old lists folds duplicates rather than dropping them: the same
+     name in two areas is the same person, so the entries are combined and
+     whichever had a colour, a level or a claim wins. Anyone standing on a
+     channel is repointed at the surviving entry, so nobody falls off a board. */
   if (!state.rosters || typeof state.rosters !== "object") state.rosters = {};
-  AREAS.forEach(a => { if (!Array.isArray(state.rosters[a])) state.rosters[a] = []; });
-  if (Array.isArray(state.roster) && state.roster.length) {   // carry over the old global list
-    state.rosters[AREAS[0]] = state.rosters[AREAS[0]].concat(state.roster);
+  if (!Array.isArray(state.rosters.ALL)) {
+    const merged = [];
+    const seen = new Map();                       // lowercase name -> entry
+    const remap = new Map();                      // dropped id -> surviving id
+
+    const swallow = p => {
+      if (!p || !p.name) return;
+      const key = p.name.trim().toLowerCase();
+      const had = seen.get(key);
+      if (!had) { seen.set(key, p); merged.push(p); return; }
+      // same character, two entries: keep the fuller one
+      if (!had.level && p.level) had.level = p.level;
+      if (!had.color && p.color) { had.color = p.color; had.color2 = p.color2; had.color3 = p.color3; }
+      if (!had.claimedBy && p.claimedBy) { had.claimedBy = p.claimedBy; had.claimedName = p.claimedName; }
+      remap.set(p.id, had.id);
+    };
+
+    AREAS.forEach(a => (state.rosters[a] || []).forEach(swallow));
+    (Array.isArray(state.roster) ? state.roster : []).forEach(swallow);
+
+    if (remap.size) {
+      live.forEach(r => (state[r] && state[r].channels || []).forEach(c =>
+        c.entries.forEach(e => { if (remap.has(e.pid)) e.pid = remap.get(e.pid); })));
+    }
+
+    /* Folding two entries into one can leave that character standing on two
+       boards at once — they were separate characters a moment ago, and one
+       could be on B1 while the other was on RD1. A character can only be in
+       one place, so keep the newest placement and take the rest off. */
+    const placed = new Map();                     // pid -> the one we keep
+    live.forEach(r => (state[r] && state[r].channels || []).forEach((c, idx) =>
+      c.entries.forEach(e => {
+        if (!e.pid) return;
+        const best = placed.get(e.pid);
+        if (!best || (e.at || 0) > (best.at || 0)) placed.set(e.pid, { r, idx, at: e.at || 0 });
+      })));
+    live.forEach(r => (state[r] && state[r].channels || []).forEach((c, idx) => {
+      c.entries = c.entries.filter(e => {
+        if (!e.pid) return true;
+        const keep = placed.get(e.pid);
+        return !keep || (keep.r === r && keep.idx === idx);
+      });
+    }));
+    merged.sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+    state.rosters = { ALL: merged };
     delete state.roster;
   }
   // pull any chat lines out of the old per-region logs, once
@@ -347,18 +398,16 @@ function adminPage() {
      Normally a name can only be removed by the browser that added it — which
      is right, but leaves nothing to do when somebody clears their cookies and
      locks themselves out of their own name. This is the way round that. */
-  const peopleRows = Object.keys(state.rosters).sort().map(area =>
-    (state.rosters[area] || []).map(p => {
-      const at = liftLook(p.id, area);
-      return `<tr>
-        <td>${esc(p.name)}</td>
-        <td class="dim">${esc(area)}</td>
-        <td class="dim">${esc(p.claimedName || "—")}</td>
-        <td class="dim">${at ? esc(at.region + " " + ch(at.idx)) : "—"}</td>
-        <td><a class="btn" href="?drop=${encodeURIComponent(p.id)}&area=${encodeURIComponent(area)}">remove</a></td>
-      </tr>`;
-    }).join("")
-  ).join("");
+  const peopleRows = roster().map(p => {
+    const at = liftLook(p.id);
+    return `<tr>
+      <td>${esc(p.name)}</td>
+      <td class="dim">${p.level ? esc(String(p.level)) : "—"}</td>
+      <td class="dim">${esc(p.claimedName || "—")}</td>
+      <td class="dim">${at ? esc(at.region + " " + ch(at.idx)) : "—"}</td>
+      <td><a class="btn" href="?drop=${encodeURIComponent(p.id)}">remove</a></td>
+    </tr>`;
+  }).join("");
 
   const banRows = Object.keys(state.bans.ids).map(id => {
     const b = state.bans.ids[id];
@@ -381,7 +430,9 @@ function adminPage() {
      itself, so the page as a whole barely scrolls at all. */
   .cards{
     display:grid;gap:16px;align-items:start;
-    grid-template-columns:repeat(auto-fit,minmax(440px,1fr));
+    /* exactly two per row: auto-fit put four across a wide screen and squeezed
+       the tables into columns too narrow to read */
+    grid-template-columns:repeat(2,minmax(0,1fr));
   }
   .card{
     border:1px solid #16202b;border-radius:12px;padding:14px 16px 16px;
@@ -389,6 +440,7 @@ function adminPage() {
   }
   .card h2{margin:0 0 11px}
   .card .scroll{max-height:54vh;overflow:auto;scrollbar-width:thin}
+  @media(max-width:1100px){ .cards{grid-template-columns:minmax(0,1fr)} }
   .card table{width:100%}
   .card th{position:sticky;top:0;background:#080e15;z-index:1}
   .say{margin:0}
@@ -494,7 +546,7 @@ ${rows ? `<div class="scroll"><table><tr><th>name</th><th>address</th><th>last s
 
 <section class="card"><h2>PEOPLE ON THE BOARDS</h2>
 ${peopleRows
-  ? `<div class="scroll"><table><tr><th>name</th><th>area</th><th>added by</th><th>on</th><th></th></tr>${peopleRows}</table></div>`
+  ? `<div class="scroll"><table><tr><th>name</th><th>level</th><th>added by</th><th>on</th><th></th></tr>${peopleRows}</table></div>`
   : `<p class="none">Nobody added yet.</p>`}
 </section>
 
@@ -522,13 +574,13 @@ if (ADMIN_KEY) {
       changed = true;
     }
     // take a name off regardless of who claimed it
-    if (q.drop && q.area) {
-      const list = state.rosters[q.area];
-      const p = list && list.find(x => x.id === q.drop);
+    if (q.drop) {
+      const list = roster();
+      const p = list.find(x => x.id === q.drop);
       if (p) {
-        liftPerson(p.id, q.area);
-        state.rosters[q.area] = list.filter(x => x.id !== p.id);
-        regionsIn(q.area).forEach(r => {
+        liftPerson(p.id);
+        state.rosters.ALL = list.filter(x => x.id !== p.id);
+        live.forEach(r => {
           note(r, `${p.name} removed from the people list`);
           broadcast(r);
         });
@@ -963,14 +1015,15 @@ function broadcastNotice() {
 function broadcastRoster() {
   io.emit("roster", state.rosters);
 }
-function findPerson(id, area) {
-  return (state.rosters[area] || []).find(p => p.id === id);
+const roster = () => state.rosters.ALL;
+function findPerson(id) {
+  return roster().find(p => p.id === id);
 }
 // pull someone off whatever channel they're on, within their own area
 // where somebody is, without moving them
-function liftLook(pid, area) {
+function liftLook(pid) {
   let at = null;
-  regionsIn(area).forEach(r => {
+  live.forEach(r => {
     state[r].channels.forEach((c, idx) => {
       if (c.entries.some(e => e.pid === pid)) at = { region: r, idx };
     });
@@ -978,9 +1031,10 @@ function liftLook(pid, area) {
   return at;
 }
 
-function liftPerson(pid, area) {
+// a character can only be in one place, and that is now across every board
+function liftPerson(pid) {
   let from = null;
-  regionsIn(area).forEach(r => {
+  live.forEach(r => {
     state[r].channels.forEach((c, idx) => {
       const i = c.entries.findIndex(e => e.pid === pid);
       if (i !== -1) { c.entries.splice(i, 1); from = { region: r, idx }; }
@@ -1202,7 +1256,7 @@ io.on("connection", socket => {
       }
       case "person-color": {
         const area = areaOf(region);
-        const p = findPerson(a.id, area);
+        const p = findPerson(a.id);
         const col = clean(a.color, 12);
         if (!p || !/^#[0-9a-fA-F]{6}$/.test(col)) return;
         // an optional second colour: the name and its glow blend between the
@@ -1223,7 +1277,7 @@ io.on("connection", socket => {
       }
       case "claim": {
         const area = areaOf(region);
-        const p = findPerson(a.pid, area);
+        const p = findPerson(a.pid);
         const token = clean(a.token, 64);
         if (!p || !token) return;
         if (p.claimedBy && p.claimedBy !== token) return;   // already someone else's
@@ -1235,7 +1289,7 @@ io.on("connection", socket => {
       }
       case "unclaim": {
         const area = areaOf(region);
-        const p = findPerson(a.pid, area);
+        const p = findPerson(a.pid);
         const token = clean(a.token, 64);
         if (!p || !token || p.claimedBy !== token) return;   // only the owner can let go
         p.claimedBy = null;
@@ -1499,7 +1553,7 @@ io.on("connection", socket => {
       }
       case "person-add": {
         const area = areaOf(region);
-        const list = state.rosters[area];
+        const list = roster();
         const name = clean(a.name, 24);
         const token = clean(a.token, 64);
         if (!list || !name || !token) return;
@@ -1535,7 +1589,7 @@ io.on("connection", socket => {
            farm here. Owner only, same as renaming. 0 clears it, and a name with
            no level is shown everywhere rather than being guessed at. */
         const area = areaOf(region);
-        const p = findPerson(a.id, area);
+        const p = findPerson(a.id);
         const token = clean(a.token, 64);
         if (!p) return;
         if (p.claimedBy && p.claimedBy !== token) return;
@@ -1546,12 +1600,12 @@ io.on("connection", socket => {
         note(region, lvl ? `${p.name} is level ${lvl}` : `${p.name}'s level cleared`);
         persist();
         broadcastRoster();
-        regionsIn(area).forEach(broadcast);
+        live.forEach(broadcast);
         return;
       }
       case "person-rename": {
         const area = areaOf(region);
-        const p = findPerson(a.id, area);
+        const p = findPerson(a.id);
         const name = clean(a.name, 24);
         const token = clean(a.token, 64);
         if (!p || !name || name === p.name) return;
@@ -1566,42 +1620,42 @@ io.on("connection", socket => {
           return;
         }
         if (nameless(name)) return;
-        const clash = (state.rosters[area] || []).find(
+        const clash = roster().find(
           x => x.id !== p.id && x.name.toLowerCase() === name.toLowerCase());
         if (clash) {
           socket.emit("renamefail", { name, by: clash.claimedName || "" });
           return;
         }
         p.name = name;
-        regionsIn(area).forEach(r => state[r].channels.forEach(c =>
+        live.forEach(r => state[r].channels.forEach(c =>
           c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));
-        state.rosters[area].sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        roster().sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
-        regionsIn(area).forEach(broadcast);
+        live.forEach(broadcast);
         return;
       }
       case "person-remove": {
         const area = areaOf(region);
-        const p = findPerson(a.id, area);
+        const p = findPerson(a.id);
         if (!p) return;
         // a claimed name can only be deleted by whoever claimed it
         if (p.claimedBy && p.claimedBy !== clean(a.token, 64)) return;
-        liftPerson(p.id, area);
-        state.rosters[area] = state.rosters[area].filter(x => x.id !== p.id);
+        liftPerson(p.id);
+        state.rosters.ALL = roster().filter(x => x.id !== p.id);
         persist();
         broadcastRoster();
-        regionsIn(area).forEach(broadcast);
+        live.forEach(broadcast);
         return;
       }
       case "assign": {
         const area = areaOf(region);
-        const p = findPerson(a.pid, area);
+        const p = findPerson(a.pid);
         if (!p || !target) return;
         const already = target.entries.find(e => e.pid === p.id);
         if (already) { already.at = Date.now(); note(region, `${p.name} timer reset in ${ch(at)} by ${by}`); break; }
         if (target.entries.length >= CAP) return;
-        const from = liftPerson(p.id, area);
+        const from = liftPerson(p.id);
         target.entries.push({ id: uid(), pid: p.id, name: p.name, at: joinClock(target) });
         if (from && from.region === region) {
           note(region, `${p.name} moved ${ch(from.idx)} → ${ch(at)} by ${by}`);
