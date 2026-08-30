@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const fs = require("fs");
+const zlib = require("zlib");
 const express = require("express");
 const http = require("http");
 const path = require("path");
@@ -161,6 +162,9 @@ function hydrate(saved) {
     state.music.playing.kind = "yt";
   }
 
+  /* Somewhere to point a donate button, if there is one to point at. */
+  if (typeof state.donate !== "string") state.donate = "";
+
   if (!Array.isArray(state.mvpNotes)) state.mvpNotes = [];
   state.mvpNotes = state.mvpNotes
     .filter(n => n && typeof n.text === "string")
@@ -259,7 +263,18 @@ function note(region, msg, who) {
 /* ---------------- web ---------------- */
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+/* Squeeze what goes over the wire.
+   Every burning tap sends the whole board to everybody watching — about 3.6 KB
+   each, which across a busy evening and a few dozen people runs into gigabytes.
+   The payload is repetitive JSON, so it deflates to a fraction of that. This is
+   a transport setting: nothing about the messages themselves changes, so there
+   is no behaviour to get wrong. */
+const io = new Server(server, {
+  perMessageDeflate: {
+    threshold: 512          // below this the compression header costs more than it saves
+  },
+  httpCompression: { threshold: 512 }
+});
 
 // Render sits behind a proxy, so without this every visitor looks like the
 // proxy's own address rather than their own
@@ -303,7 +318,66 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, "public"), { index: false }));
+/* Gzip anything text-shaped on the way out.
+   The page is 273 KB raw and 77 KB gzipped, and it is fetched on every visit.
+   Written by hand rather than pulling in a dependency: this project is
+   deployed by uploading two files, and a new package means a third. */
+app.use((req, res, next) => {
+  const accepts = String(req.headers["accept-encoding"] || "");
+  if (!/\bgzip\b/.test(accepts)) return next();
+
+  const send = res.send.bind(res);
+  const sendFile = res.sendFile.bind(res);
+
+  const gzipBuffer = (buf, type) => {
+    if (buf.length < 1024) return null;                 // not worth the round trip
+    if (!/text|json|javascript|html|css|svg/i.test(type || "")) return null;
+    try { return zlib.gzipSync(buf) } catch (e) { return null }
+  };
+
+  res.send = body => {
+    if (res.getHeader("Content-Encoding")) return send(body);
+    const buf = Buffer.isBuffer(body) ? body
+      : typeof body === "string" ? Buffer.from(body)
+      : null;
+    if (!buf) return send(body);
+    const gz = gzipBuffer(buf, res.getHeader("Content-Type") || "text/html");
+    if (!gz) return send(body);
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Vary", "Accept-Encoding");
+    res.removeHeader("Content-Length");
+    return send(gz);
+  };
+
+  res.sendFile = (fp, opts, cb) => {
+    let buf;
+    try { buf = fs.readFileSync(fp) } catch (e) { return sendFile(fp, opts, cb) }
+    const type = /\.html?$/i.test(fp) ? "text/html; charset=utf-8"
+      : /\.js$/i.test(fp) ? "application/javascript"
+      : /\.css$/i.test(fp) ? "text/css" : "";
+    const gz = type && gzipBuffer(buf, type);
+    if (!gz) return sendFile(fp, opts, cb);
+    res.setHeader("Content-Type", type);
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Vary", "Accept-Encoding");
+    res.end(gz);
+  };
+
+  next();
+});
+
+/* Let browsers keep what has not changed.
+   Images and sounds never change without being replaced, so a long life is
+   safe. The page itself must always be revalidated, or a deploy would not
+   reach anybody. */
+app.use(express.static(path.join(__dirname, "public"), {
+  index: false,
+  setHeaders(res, fp) {
+    if (/\.(png|jpe?g|gif|webp|svg|mp4|webm|mp3|ogg|wav|woff2?)$/i.test(fp)) {
+      res.setHeader("Cache-Control", "public, max-age=604800");
+    }
+  }
+}));
 
 app.get("/version", (_req, res) => res.json({ build: BUILD }));
 
@@ -449,7 +523,11 @@ function adminPage() {
     background:#0b131c;color:#e6edf5;border:1px solid #22303f;border-radius:8px;
     padding:9px 11px;font:inherit;font-size:13px;line-height:1.5;
   }
-  .say textarea:focus{outline:none;border-color:#eab308}
+  .say textarea:focus,.say input:focus{outline:none;border-color:#eab308}
+  .say input{
+    width:100%;box-sizing:border-box;background:#0b131c;color:#e6edf5;
+    border:1px solid #22303f;border-radius:8px;padding:9px 11px;font:inherit;font-size:13px;
+  }
   .say .row{display:flex;align-items:center;gap:10px;margin-top:9px}
   .say button{
     font:inherit;font-size:12px;padding:7px 14px;border-radius:7px;cursor:pointer;
@@ -515,6 +593,19 @@ function adminPage() {
   </div>
 </form>
 
+</section>
+
+<h2 class="two" style="margin-top:20px">DONATE BUTTON</h2>
+<form class="say" method="GET">
+  <input name="donate" maxlength="300" value="${esc(state.donate)}"
+         placeholder="https://paypal.me/yourname — leave empty to hide the button">
+  <div class="row">
+    <button type="submit" name="setdonate" value="1">save link</button>
+    <span class="now">${state.donate
+      ? "button is showing"
+      : "no link, so no button is shown"}</span>
+  </div>
+</form>
 </section>
 
 <section class="card"><h2>ON THE SITE LATELY</h2>
@@ -597,6 +688,12 @@ if (ADMIN_KEY) {
       state.notice = text ? { text, by: "admin", at: Date.now() } : { text: "", by: "", at: 0 };
       live.forEach(r => note(r, text ? "announcement posted" : "announcement cleared"));
       broadcastNotice();
+      changed = true;
+    }
+    // where the donate button points, or nothing to hide it
+    if (q.setdonate !== undefined) {
+      state.donate = cleanLink(q.donate);
+      broadcastDonate();
       changed = true;
     }
     if (q.unnotice) {
@@ -1009,6 +1106,19 @@ function scheduleSongEnd() {
   songHandle = setTimeout(advance, left);
 }
 
+/* Only ever a plain web address.
+   This ends up as a link on everybody's screen, so anything that is not http
+   or https is refused outright — a javascript: address here would run on every
+   visitor's page. */
+function cleanLink(raw) {
+  const v = clean(raw, 300);
+  if (!v) return "";
+  if (!/^https?:\/\/[^\s<>"']+$/i.test(v)) return "";
+  return v;
+}
+
+function broadcastDonate() { io.emit("donate", state.donate); }
+
 function broadcastNotice() {
   io.emit("notice", state.notice);
 }
@@ -1103,6 +1213,7 @@ io.on("connection", socket => {
     socket.emit("musiclog", state.musicLog);
     socket.emit("proj", state.proj);
     socket.emit("mvpnotes", state.mvpNotes);
+    socket.emit("donate", state.donate);
     socket.emit("listeners", listenersView());
     presence();
   });

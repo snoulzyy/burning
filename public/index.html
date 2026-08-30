@@ -1084,6 +1084,51 @@
     .drawer.size-l .now{min-height:250px}
   }
 
+  /* A button, not a link on show. Where it goes is nobody's business until
+     they press it, and it is not there at all unless one has been set. */
+  .donate-btn{
+    flex:none;padding:8px 13px;border-radius:9px;cursor:pointer;
+    font:inherit;font-size:11.5px;font-weight:700;letter-spacing:.06em;
+    color:#f0abfc;border:1px solid rgba(240,171,252,.45);
+    background:linear-gradient(140deg,rgba(240,171,252,.14),rgba(168,85,247,.12));
+  }
+  .donate-btn:hover{
+    color:#fff;border-color:rgba(240,171,252,.85);
+    box-shadow:0 0 14px -4px rgba(240,171,252,.8);
+  }
+  .donate-btn[hidden]{display:none}
+
+  /* ---------------- the way in ----------------
+     Nothing but this until somebody says who they are. The board was fully
+     readable before and every control simply refused when pressed, which reads
+     as broken rather than as a rule. One door instead of forty locked drawers. */
+  .gate{
+    position:fixed;inset:0;z-index:200;display:grid;place-items:center;
+    padding:20px;background:rgba(4,8,13,.94);
+  }
+  .gate[hidden]{display:none}
+  .gate-box{
+    width:min(420px,100%);padding:26px;border-radius:16px;text-align:center;
+    background:#0b131c;border:1px solid rgba(245,158,11,.45);
+    box-shadow:0 26px 60px rgba(0,0,0,.75);
+  }
+  .gate-box h3{
+    margin:0 0 12px;font:inherit;font-size:12px;font-weight:800;
+    letter-spacing:.18em;color:var(--amber);
+  }
+  .gate-box p{margin:0 0 18px;font-size:13.5px;line-height:1.6;color:var(--text)}
+  .gate-fine{font-size:11.5px !important;color:var(--dim) !important;margin:14px 0 0 !important}
+  .gate-add{
+    width:100%;padding:13px;border-radius:10px;cursor:pointer;
+    font:inherit;font-size:14px;font-weight:700;letter-spacing:.03em;
+    color:var(--amber);background:rgba(245,158,11,.12);
+    border:1px solid rgba(245,158,11,.7);
+  }
+  .gate-add:hover{color:#fbbf24;background:rgba(245,158,11,.22)}
+  /* and nothing behind it is reachable, by pointer or by keyboard */
+  html.nameless .wrap,
+  html.nameless .drawer{pointer-events:none;user-select:none;filter:blur(3px)}
+
   /* ---------------- the announcement ----------------
      Sits under the header, above everything else, so it is the first thing
      read on the way in. Folded to one line by default: an announcement that
@@ -1737,6 +1782,7 @@
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
     <button class="ghost commsbtn" id="commsBtn" title="What is up and where">mvp comms</button>
     <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
+    <button class="donate-btn" id="donateBtn" hidden>donate</button>
     <button class="gear-btn" id="helpBtn" title="Settings" aria-label="Settings"></button>
     <div class="headright">
       <div class="tabsWrap">
@@ -1746,6 +1792,17 @@
   </header>
 
   <button class="jumpme" id="jumpMe" hidden>jump to me</button>
+  <div class="gate" id="gate" hidden>
+    <div class="gate-box">
+      <h3>WHO ARE YOU?</h3>
+      <p>This board is shared, and everything anyone does on it is logged with
+         a name. Add yours to come in.</p>
+      <button class="gate-add" id="gateAdd">+ add your name</button>
+      <p class="gate-fine">Use the name people know you by in game. You can add
+         more characters once you are in.</p>
+    </div>
+  </div>
+
   <div class="notice" id="notice" hidden>
     <button class="notice-head" id="noticeHead">
       <span class="notice-ic" id="noticeIc"></span>
@@ -1769,7 +1826,10 @@
              aria-label="Find a player">
       <select class="benchlv" id="benchLv" aria-label="Which levels to show">
         <option value="all">everyone</option>
-        <option value="here">this board's levels</option>
+        <option value="295">level 295</option>
+        <option value="296">level 296</option>
+        <option value="297">level 297</option>
+        <option value="298+">level 298+</option>
       </select>
       <div class="bench-body" id="bench"></div>
     </section>
@@ -4154,17 +4214,17 @@ function boardLevels(){
    Unknown level counts as yes — four RD boards share one people list, and
    somebody who has not filled their level in should never quietly vanish from
    a board they might well belong on. */
-function fitsHere(p){
-  const want = boardLevels();
-  if(!want.length) return true;          // a board with no level rule at all
-  /* No level set counts as not matching. It used to count as yes, on the
-     grounds that nobody should vanish for not filling it in — but that meant
-     filtering to a board showed everyone who had not bothered, which is most
-     of the list and defeats the filter. "everyone" in the dropdown is one
-     click away, and the count beside it says how many are being held back. */
-  if(!p.level) return false;
-  return want.indexOf(p.level) !== -1;
+/* The buckets you can filter to. 298+ covers 298 and anything above it, so
+   opening a higher map later needs no change here. */
+const LEVEL_BUCKETS = ["295", "296", "297", "298+"];
+
+function inBucket(p, b){
+  if(b === "all") return true;
+  if(!p.level) return false;             // no level set is not a match
+  return b === "298+" ? p.level >= 298 : p.level === Number(b);
 }
+
+function fitsHere(p){ return inBucket(p, benchLevel); }
 
 // your usual crowd, kept per browser: it is your list, not the board's
 let starred = new Set();
@@ -4174,24 +4234,25 @@ function saveStars(){
 }
 
 let benchFind = "";
-/* Everyone, until somebody says otherwise.
-   The filter only shows characters whose level matches this board, and nobody
-   has a level the day it ships — so defaulting it on would greet the whole
-   group with an empty Players box. Off by default, remembered once chosen. */
-let showOthers = true;
+/* Which levels the box is showing.
+   Yours to pick rather than tied to whichever board you happen to be on: you
+   might be looking at B1 while sorting out who on the list still needs a level
+   set. Everyone by default, since nobody has one the day this ships and an
+   empty Players box is a poor greeting. Remembered once chosen. */
+let benchLevel = "all";
 setTimeout(() => {
   const box = document.getElementById("benchFind");
   if(box) box.addEventListener("input", () => { benchFind = box.value; renderBench(); });
   const lv = document.getElementById("benchLv");
   if(lv){
     try {
-      const saved = localStorage.getItem("ct:showall");
-      if(saved !== null) showOthers = saved === "1";
+      const saved = localStorage.getItem("ct:benchlvl");
+      if(saved === "all" || LEVEL_BUCKETS.indexOf(saved) !== -1) benchLevel = saved;
     } catch(e){}
-    lv.value = showOthers ? "all" : "here";
+    lv.value = benchLevel;
     lv.addEventListener("change", () => {
-      showOthers = lv.value === "all";
-      try { localStorage.setItem("ct:showall", showOthers ? "1" : "0") } catch(e){}
+      benchLevel = lv.value;
+      try { localStorage.setItem("ct:benchlvl", benchLevel) } catch(e){}
       renderBench();
     });
   }
@@ -4214,34 +4275,40 @@ function renderBench(){
      across the lot, because finding somebody must not depend on their level. */
   const find = benchFind.trim().toLowerCase();
   const shown = find ? roster.filter(p => p.name.toLowerCase().includes(find)) : roster;
-  const rank = p => (starred.has(p.id) ? 0 : (fitsHere(p) ? 1 : 2));
+  /* Starring pins somebody to the top of whatever you are looking at — it does
+     not exempt them from the filter. It used to: a starred 296 turned up on a
+     295 board, which is why the box said "lv 295" with 296s underneath it. */
+  const rank = p => (fitsHere(p) ? (starred.has(p.id) ? 0 : 1) : 2);
   // by rank only: sort is stable, so within each group the server's own
   // alphabetical order is left exactly as it was
   const ordered = shown.slice().sort((x, y) => rank(x) - rank(y));
   const others = ordered.filter(p => rank(p) === 2);
   const main = ordered.filter(p => rank(p) !== 2);
 
-  if(shown.length && !main.length && !showOthers){
+  if(shown.length && !main.length && benchLevel !== "all"){
     const e = document.createElement("div");
     e.className = "bench-empty";
     e.textContent = find
-      ? "Nobody by that name at this board's level."
-      : "Nobody set to this board's level yet — switch to everyone above.";
+      ? "Nobody by that name at that level."
+      : "Nobody at that level yet — pick everyone above.";
     benchEl.appendChild(e);
   }
 
+  /* Only the chosen level is drawn. Anyone outside it is not listed at all —
+     a starred name included, since a starred RD character has no business
+     showing while you are looking at B1. */
   const drawAll = main.slice();
-  if(showOthers) drawAll.push.apply(drawAll, others);
 
   // the dropdown says how many are being held back, so it is never a mystery
   const lvSel = document.getElementById("benchLv");
   if(lvSel){
-    const opt = lvSel.querySelector('option[value="here"]');
-    const lvls = boardLevels();
-    opt.textContent = lvls.length
-      ? "this board only (lv " + lvls.join("/") + ")" + (others.length ? " — " + others.length + " hidden" : "")
-      : "this board only";
-    lvSel.classList.toggle("on", !showOthers && others.length > 0);
+    // say how many the choice is holding back, so it is never a mystery
+    LEVEL_BUCKETS.forEach(b => {
+      const o = lvSel.querySelector('option[value="' + b + '"]');
+      if(o) o.textContent = "level " + b
+        + (b === benchLevel && others.length ? " — " + others.length + " hidden" : "");
+    });
+    lvSel.classList.toggle("on", benchLevel !== "all");
   }
 
   drawAll.forEach(p => {
@@ -4457,7 +4524,7 @@ function renderBench(){
     : "drag, or click then click a channel";
 }
 
-document.getElementById("benchAdd").onclick = () => {
+function addPersonFlow(){
   const v = prompt("Name to add");
   const name = (v || "").trim().slice(0,24);
   if(!name) return;
@@ -4482,7 +4549,9 @@ document.getElementById("benchAdd").onclick = () => {
   try {
     if(window.Notification && Notification.permission === "default") Notification.requestPermission();
   } catch(e){}
-};
+}
+document.getElementById("benchAdd").onclick = addPersonFlow;
+document.getElementById("gateAdd").onclick = addPersonFlow;
 
 /* ---------------- channel filters ----------------
    Filtering never renumbers anything: CH12 stays CH12, the matching cards
@@ -5063,6 +5132,8 @@ function paintWho(){
     ? "You are " + me + " — add another name in Players to change it"
     : "Add yourself in the Players box to pick a name";
   document.documentElement.classList.toggle("nameless", !named);
+  const gate = document.getElementById("gate");
+  if(gate) gate.hidden = named;
 }
 paintWho();
 
@@ -5172,6 +5243,30 @@ socket.on("addfail", info => {
       + ". Pick something else.", true);
   }
 });
+
+/* Where the donate button goes, if anywhere.
+   Held rather than rendered as an address: the button says "donate" and the
+   link only exists at the moment somebody presses it. No link, no button. */
+let donateUrl = "";
+const donateBtn = document.getElementById("donateBtn");
+
+function paintDonate(){
+  if(!donateBtn) return;
+  const ok = /^https?:\/\//i.test(donateUrl);
+  donateBtn.hidden = !ok;
+  donateBtn.title = ok ? "Opens in a new tab" : "";
+}
+
+if(donateBtn) donateBtn.onclick = () => {
+  if(!/^https?:\/\//i.test(donateUrl)) return;
+  window.open(donateUrl, "_blank", "noopener,noreferrer");
+};
+
+socket.on("donate", u => {
+  donateUrl = typeof u === "string" ? u : "";
+  paintDonate();
+});
+paintDonate();
 
 socket.on("notice", n => {
   notice = (n && typeof n === "object") ? n : { text:"", by:"", at:0 };
