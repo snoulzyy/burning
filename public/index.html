@@ -168,6 +168,12 @@
   }
   .tab:hover{color:var(--text);background:rgba(255,255,255,.035)}
   .tab[aria-current="page"]{background:var(--cyan);color:#04202a;font-weight:800}
+  .tab.mapall{
+    color:var(--dim);border-style:dashed;border-color:#2d3f52;background:none;
+    font-size:10.5px;letter-spacing:.06em;
+  }
+  .tab.mapall:hover{color:var(--cyan);border-color:rgba(34,211,238,.5)}
+  .tab.mapall.on{color:var(--cyan);border-style:solid;border-color:rgba(34,211,238,.4)}
   .tab.soon{color:#33465a;cursor:not-allowed;background:none}
   .tab.soon:hover{background:none;color:#33465a}
 
@@ -320,6 +326,7 @@
   }
   .plevel:hover{color:var(--cyan);border-color:rgba(34,211,238,.45)}
   .plevel.unset{color:#3d4d5e;border-style:dashed}
+  .plevel.read{cursor:default;background:none;border-color:transparent;color:#6b8299}
   .pstar{
     flex:none;display:grid;place-items:center;width:22px;height:20px;padding:0;
     line-height:1;font-size:15px;cursor:pointer;
@@ -2954,6 +2961,31 @@ socket.on("hello", info => {
   paintTitles();
 });
 
+/* The levels your own characters are, across every area.
+   All of them, not one: you might have a 296 and a 297, and hiding the boards
+   for either would strand a character you own. */
+function myLevels(){
+  const out = new Set();
+  Object.keys(rosters).forEach(area =>
+    (rosters[area] || []).forEach(p => {
+      if(p.level && myIds.has(p.id)) out.add(p.level);
+    }));
+  return out;
+}
+
+// show every board at least one of your characters can farm
+let allMaps = false;
+try { allMaps = localStorage.getItem("ct:allmaps") === "1" } catch(e){}
+
+function mapFits(r){
+  if(allMaps) return true;
+  const mine = myLevels();
+  if(!mine.size) return true;                  // no levels set: show the lot
+  const want = (r.levels || []);
+  if(!want.length) return true;                // a board with no level rule
+  return want.some(l => mine.has(l));
+}
+
 function renderTabs(){
   const bar = document.getElementById("tabsBar");
   if(bar && !bar.innerHTML) bar.innerHTML = chevron("right");
@@ -2963,6 +2995,8 @@ function renderTabs(){
   regionList.forEach(r => {
     // hidden by choice — but never hide the board you're actually on
     if(hiddenTabs.has(r.id) && r.id !== region) return;
+    // a board none of your characters can farm, unless you asked for all
+    if(!mapFits(r) && r.id !== region) return;
     if(r.enabled){
       const b = document.createElement("button");
       b.className = "tab";
@@ -2976,6 +3010,24 @@ function renderTabs(){
       tabs.appendChild(sp);
     }
   });
+
+  /* A way back to the rest. Only appears when boards are actually being held
+     back, so it is never a button that does nothing. */
+  const hiddenByLvl = regionList.filter(r => r.enabled && !hiddenTabs.has(r.id) && !mapFits(r));
+  if(hiddenByLvl.length || allMaps){
+    const more = document.createElement("button");
+    more.className = "tab mapall" + (allMaps ? " on" : "");
+    more.textContent = allMaps ? "my maps" : "all maps (" + hiddenByLvl.length + ")";
+    more.title = allMaps
+      ? "Show only the boards your characters can farm"
+      : hiddenByLvl.map(r => r.id).join(", ") + " — not for your levels";
+    more.onclick = () => {
+      allMaps = !allMaps;
+      try { localStorage.setItem("ct:allmaps", allMaps ? "1" : "0") } catch(e){}
+      renderTabs();
+    };
+    tabs.appendChild(more);
+  }
 
   // on a narrow screen the row scrolls sideways, so the board you are actually
   // on can sit off the edge. bring it into view rather than leaving you to hunt.
@@ -3081,6 +3133,9 @@ socket.on("roster", obj => {
   recomputeColors();
   reclaimMine();
   renderBench();
+  // the tab row hides boards none of your characters can farm, and it can only
+  // know that once the roster has arrived — it runs before this on connect
+  renderTabs();
   render();
   renderLog();
 });
@@ -4257,11 +4312,12 @@ function renderBench(){
     const meta = document.createElement("span");
     meta.className = "pmeta" + (at ? " where" : "") + (at && !here ? " away" : "")
       + (isOther ? " off" : "");
-    if(!at && p.level){
-      meta.textContent = "Lv" + p.level;
-      meta.title = p.name + " is level " + p.level
-        + (isOther ? " — cannot farm " + region : "");
-    }
+    /* The level does not live here. It used to print beside the name for
+       somebody else's character and as a button on the right for your own, so
+       the same fact sat in two different places depending on who owned it —
+       and it vanished entirely once they stepped onto a channel, because this
+       slot was then showing where they were. It has one home now, over on the
+       right between the star and the cross, and it is always there. */
     if(at){
       /* Where they are lives on the channel cards, which is where you are
          looking when you want to know. Repeating it on every row here made a
@@ -4315,8 +4371,16 @@ function renderBench(){
                level: isFinite(n) && n > 0 ? n : 0 });
       };
       lvEl = lv;
+    } else if(p.level){
+      // somebody else's character: the level still shows, it just cannot be
+      // pressed. same slot, same width, so every row lines up
+      const lvRead = document.createElement("span");
+      lvRead.className = "plevel read";
+      lvRead.textContent = String(p.level);
+      lvRead.title = p.name + " is level " + p.level;
+      lvEl = lvRead;
     } else {
-      lvEl = gap();                     // hold the level's place
+      lvEl = gap();                     // nobody has set one yet
     }
 
     /* Your usual crowd, pinned to the top of your own list. Kept in this

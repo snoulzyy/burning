@@ -375,7 +375,23 @@ function adminPage() {
   return `<!doctype html><meta charset="utf-8"><title>·</title>
 <meta name="robots" content="noindex,nofollow">
 <style>
-  .say{max-width:900px;margin:0 0 26px}
+  /* Cards side by side rather than one long column. Everything stacked down
+     the left with the whole right half empty, so reaching the ban list meant
+     scrolling past the announcement box every time. Each card scrolls inside
+     itself, so the page as a whole barely scrolls at all. */
+  .cards{
+    display:grid;gap:16px;align-items:start;
+    grid-template-columns:repeat(auto-fit,minmax(440px,1fr));
+  }
+  .card{
+    border:1px solid #16202b;border-radius:12px;padding:14px 16px 16px;
+    background:#080e15;min-width:0;
+  }
+  .card h2{margin:0 0 11px}
+  .card .scroll{max-height:54vh;overflow:auto;scrollbar-width:thin}
+  .card table{width:100%}
+  .card th{position:sticky;top:0;background:#080e15;z-index:1}
+  .say{margin:0}
   .say textarea{
     width:100%;box-sizing:border-box;min-height:74px;resize:vertical;
     background:#0b131c;color:#e6edf5;border:1px solid #22303f;border-radius:8px;
@@ -425,7 +441,8 @@ function adminPage() {
   /* has had one before, just is not using it now */
   .past{color:#eab308}
 </style>
-<h2>ANNOUNCEMENT</h2>
+<div class="cards">
+<section class="card"><h2>ANNOUNCEMENT</h2>
 <form class="say" method="GET">
   <textarea name="notice" maxlength="${NOTICE_MAX}" placeholder="Shown to everyone at the top of the board. Leave empty and press clear to take it down.">${esc(n.text || "")}</textarea>
   <p class="pv-label">HOW IT WILL LOOK</p>
@@ -446,7 +463,9 @@ function adminPage() {
   </div>
 </form>
 
-<h2 class="two">ON THE SITE LATELY</h2>
+</section>
+
+<section class="card"><h2>ON THE SITE LATELY</h2>
 <script>
   // live preview: the box on the left, the banner as the board will draw it
   (function(){
@@ -469,16 +488,21 @@ function adminPage() {
     draw();
   })();
 </script>
-${rows ? `<table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table>`
+${rows ? `<div class="scroll"><table><tr><th>name</th><th>address</th><th>last seen</th><th>actions</th><th>browser</th><th></th></tr>${rows}</table></div>`
        : `<p class="none">Nobody yet.</p>`}
-<h2 class="two">PEOPLE ON THE BOARDS</h2>
-${peopleRows
-  ? `<table><tr><th>name</th><th>area</th><th>added by</th><th>on</th><th></th></tr>${peopleRows}</table>`
-  : `<p class="none">Nobody added yet.</p>`}
+</section>
 
-<h2 class="two">BANNED</h2>
-${banRows ? `<table><tr><th>name</th><th>what</th><th>kind</th><th>when</th><th></th></tr>${banRows}</table>`
-          : `<p class="none">Nobody.</p>`}`;
+<section class="card"><h2>PEOPLE ON THE BOARDS</h2>
+${peopleRows
+  ? `<div class="scroll"><table><tr><th>name</th><th>area</th><th>added by</th><th>on</th><th></th></tr>${peopleRows}</table></div>`
+  : `<p class="none">Nobody added yet.</p>`}
+</section>
+
+<section class="card"><h2>BANNED</h2>
+${banRows ? `<div class="scroll"><table><tr><th>name</th><th>what</th><th>kind</th><th>when</th><th></th></tr>${banRows}</table></div>`
+          : `<p class="none">Nobody.</p>`}
+</section>
+</div>`;
 }
 
 if (ADMIN_KEY) {
