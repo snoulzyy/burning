@@ -1144,6 +1144,9 @@
      ancestor blurs its children whatever they ask for, and it also turns
      position:fixed into position:absolute against that ancestor — so the gate
      was both blurred and trapped inside the page's own width. */
+  /* the same shutter as the door, for somebody who has been removed */
+  html.booted .wrap,
+  html.booted .drawer,
   html.nameless .wrap,
   html.nameless .drawer{
     /* hard enough that no name, message or channel can be picked out — the
@@ -1984,6 +1987,14 @@
     <span id="tally"></span>
     <span class="sticker-row" id="stickFoot"></span>
   </footer>
+</div>
+
+<div class="gate booted" id="booted" hidden>
+  <div class="gate-box">
+    <h3>NO LONGER WELCOME</h3>
+    <p>This browser has been removed from the board.</p>
+    <p class="gate-fine">If you think that is a mistake, ask whoever runs it.</p>
+  </div>
 </div>
 
 <div class="gate" id="gate" hidden>
@@ -5348,6 +5359,26 @@ if(donateBtn) donateBtn.onclick = () => {
   if(!/^https?:\/\//i.test(donateUrl)) return;
   window.open(donateUrl, "_blank", "noopener,noreferrer");
 };
+
+/* Removed from the board.
+   The socket is about to close, and closing it alone leaves the page sitting
+   there readable for as long as the tab stays open. Cover it, stop the music,
+   and stop reconnecting. None of this is a security measure on its own — the
+   server refuses this browser regardless — but the board should not still be
+   on screen a minute later. */
+let booted = false;
+socket.on("banned", () => {
+  if(booted) return;
+  booted = true;
+  document.documentElement.classList.add("booted");
+  const box = document.getElementById("booted");
+  if(box) box.hidden = false;
+  try { if(typeof stopPlayer === "function") stopPlayer(); } catch(e){}
+  try {
+    socket.io.opts.reconnection = false;      // stop knocking
+    socket.disconnect();
+  } catch(e){}
+});
 
 socket.on("donate", u => {
   donateUrl = typeof u === "string" ? u : "";

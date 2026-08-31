@@ -791,12 +791,22 @@ function noteSeen(id, ip, name) {
 }
 
 // throw off anyone already connected who has just been banned
+/* Say so before cutting them off.
+   Disconnecting alone leaves the page exactly as it was — frozen, but still
+   readable, and it stays that way for as long as the tab is left open. The
+   message goes first so the browser can clear itself; the socket closes a tick
+   later, once it has actually gone out. */
+function boot(sock) {
+  try { sock.emit("banned"); } catch (e) {}
+  setTimeout(() => { try { sock.disconnect(true); } catch (e) {} }, 30);
+}
+
 function dropBanned() {
   io.sockets.sockets.forEach(sock => {
     const c = readCookies(sock.handshake.headers.cookie);
     const ip = String((sock.handshake.headers["x-forwarded-for"] || "").split(",")[0].trim()
       || sock.handshake.address || "").replace(/^::ffff:/, "");
-    if (isBanned(c[ID_COOKIE], ip)) sock.disconnect(true);
+    if (isBanned(c[ID_COOKIE], ip)) boot(sock);
   });
 }
 
@@ -1196,7 +1206,7 @@ io.on("connection", socket => {
 
   // banned browsers get nothing. no message, no explanation — from their side
   // it is indistinguishable from the site being unreachable.
-  if (isBanned(browserId, ip)) { socket.disconnect(true); return; }
+  if (isBanned(browserId, ip)) { boot(socket); return; }
   noteSeen(browserId, ip, "");
 
   let viewing = null;   // the tab they're looking at right now
@@ -1245,7 +1255,7 @@ io.on("connection", socket => {
     const before = board.map(c => c.entries.length);
     const by = clean(a.by, 24) || "someone";
     if (nameless(by)) return;          // say who you are first
-    if (isBanned(browserId, ip)) { socket.disconnect(true); return; }
+    if (isBanned(browserId, ip)) { boot(socket); return; }
     noteSeen(browserId, ip, by);
     const seenKey = browserId || (ip ? "ip:" + ip : "");
     if (state.seen[seenKey]) state.seen[seenKey].acts =
