@@ -165,6 +165,12 @@ function hydrate(saved) {
   /* Somewhere to point a donate button, if there is one to point at. */
   if (typeof state.donate !== "string") state.donate = "";
 
+  /* How long a channel runs before the people on it get told. Forty is what
+     it has always been, but it is a rule about how the group plays rather than
+     anything fixed, so it is set from the admin page. */
+  const am = Math.round(Number(state.alertMins));
+  state.alertMins = isFinite(am) && am > 0 ? Math.max(1, Math.min(240, am)) : 40;
+
   if (!Array.isArray(state.mvpNotes)) state.mvpNotes = [];
   state.mvpNotes = state.mvpNotes
     .filter(n => n && typeof n.text === "string")
@@ -545,6 +551,7 @@ function adminPage() {
   }
   .say .clear{color:#8ba0b4;background:none;border:1px solid #22303f;font-weight:400}
   .say .clear:hover{color:#f87171;border-color:#f87171}
+  .say .clear:disabled{color:#eab308;border-color:#eab308;cursor:default}
   .say .now{font-size:11px;color:#8ba0b4}
   /* what it will look like on the board, before anybody sees it */
   .pv-label{font-size:9.5px;letter-spacing:.16em;color:#5f7285;margin:16px 0 7px}
@@ -614,6 +621,29 @@ function adminPage() {
     <span class="now">${state.donate
       ? "button is showing"
       : "no link, so no button is shown"}</span>
+  </div>
+</form>
+</section>
+
+<section class="card"><h2>ALERT TIMER</h2>
+<form class="say" method="GET">
+  <p class="now" style="margin:0 0 10px">
+    How long a channel runs before the people on it get a sound and a popup.
+    Only on B1, RD1 and RD4.
+  </p>
+  <div class="row">
+    <button type="submit" name="setalert" value="1" class="clear"
+            ${state.alertMins === 40 ? "disabled" : ""}
+            onclick="this.form.alert.value=40">40 minutes</button>
+    <button type="submit" name="setalert" value="1" class="clear"
+            ${state.alertMins === 55 ? "disabled" : ""}
+            onclick="this.form.alert.value=55">55 minutes</button>
+  </div>
+  <div class="row">
+    <input name="alert" type="number" min="1" max="240" step="1" value="${state.alertMins}"
+           style="width:90px">
+    <button type="submit" name="setalert" value="1">set</button>
+    <span class="now">now: ${state.alertMins} minutes</span>
   </div>
 </form>
 </section>
@@ -699,6 +729,16 @@ if (ADMIN_KEY) {
       live.forEach(r => note(r, text ? "announcement posted" : "announcement cleared"));
       broadcastNotice();
       changed = true;
+    }
+    // how long before the people on a channel are told
+    if (q.setalert !== undefined) {
+      const n = Math.round(Number(q.alert));
+      if (isFinite(n) && n > 0) {
+        state.alertMins = Math.max(1, Math.min(240, n));
+        live.forEach(r => note(r, `alert timer set to ${state.alertMins} minutes`));
+        broadcastAlert();
+        changed = true;
+      }
     }
     // where the donate button points, or nothing to hide it
     if (q.setdonate !== undefined) {
@@ -1138,6 +1178,7 @@ function cleanLink(raw) {
 }
 
 function broadcastDonate() { io.emit("donate", state.donate); }
+function broadcastAlert() { io.emit("alertmins", state.alertMins); }
 
 function broadcastNotice() {
   io.emit("notice", state.notice);
@@ -1234,6 +1275,7 @@ io.on("connection", socket => {
     socket.emit("proj", state.proj);
     socket.emit("mvpnotes", state.mvpNotes);
     socket.emit("donate", state.donate);
+    socket.emit("alertmins", state.alertMins);
     socket.emit("listeners", listenersView());
     presence();
   });

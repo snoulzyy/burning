@@ -1900,7 +1900,7 @@
         <div class="set-group">
           <h5>SOUND</h5>
           <div class="set-row">
-            <button class="ghost" id="soundBtn" title="Sound when a channel hits 40 minutes">🔊 40 min: on</button>
+            <button class="ghost" id="soundBtn" title="Sound when a channel reaches the alert time">🔊 40 min: on</button>
             <button class="ghost" id="mvpSoundBtn" title="Sound when somebody calls MVP">🔊 MVP: on</button>
           </div>
         </div>
@@ -2873,6 +2873,16 @@ try { if(!localStorage.getItem("ct:seenhelp")) setTimeout(openHelp, 700) } catch
    They interrupt different things — one says a channel is up, the other that
    somebody wants everybody now — and people want them separately. The old
    single setting decides both the first time, so nobody's choice is lost. */
+/* How long a channel runs before the people on it are told.
+   Sent by the server rather than fixed here: forty is what it has always been,
+   but it is a decision about how the group plays, not a constant. It arrives
+   on join, so a change reaches everybody without a redeploy.
+   Declared up here because the settings switch is labelled with it, and that
+   is painted long before the old spot further down the file.
+   Nothing in this file says where it is set from — this is served to everyone,
+   and a comment naming that page would be a signpost to it. */
+let CHANNEL_ALERT_MINUTES = 40;
+
 let soundOn = true, mvpSoundOn = true;
 try {
   const was = localStorage.getItem("ct:sound");
@@ -5726,7 +5736,8 @@ paintBg();
 const soundBtn = document.getElementById("soundBtn");
 const mvpSoundBtn = document.getElementById("mvpSoundBtn");
 function paintSound(){
-  soundBtn.textContent = soundOn ? "🔊 40 min: on" : "🔇 40 min: off";
+  soundBtn.textContent = (soundOn ? "🔊 " : "🔇 ")
+    + CHANNEL_ALERT_MINUTES + " min: " + (soundOn ? "on" : "off");
   mvpSoundBtn.textContent = mvpSoundOn ? "🔊 MVP: on" : "🔇 MVP: off";
 }
 paintSound();
@@ -5755,7 +5766,15 @@ mvpSoundBtn.onclick = () => {
    When someone on a channel hits the mark, only the people actually on that
    channel get the sound — everyone else hears nothing.
    -------------------------------------------------------------------------- */
-const CHANNEL_ALERT_MINUTES = 40;
+socket.on("alertmins", n => {
+  const v = Math.round(Number(n));
+  if(!isFinite(v) || v <= 0) return;
+  CHANNEL_ALERT_MINUTES = v;
+  // the switch in settings names the timer, so it has to follow
+  if(typeof paintSound === "function") paintSound();
+  // anybody already past the new mark should be told, not skipped
+  if(typeof checkChannelTimers === "function") checkChannelTimers();
+});
 // which areas get the 40 minute alert. keyed on area rather than board name,
 // so a new RD map is covered the moment it's added
 /* Named boards, not whole areas. It used to be keyed on the area, which meant
