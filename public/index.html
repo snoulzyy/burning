@@ -1144,6 +1144,26 @@
      ancestor blurs its children whatever they ask for, and it also turns
      position:fixed into position:absolute against that ancestor — so the gate
      was both blurred and trapped inside the page's own width. */
+  /* ---------------- cinema ----------------
+     Video wallpaper with nothing in front of it. Everything goes except the
+     music button, which is the way back: it opens the queue, and the queue is
+     where the wallpaper switch lives. Tied to the wallpaper actually playing
+     rather than to the setting, so turning it on with an empty queue does not
+     leave somebody staring at a blank page wondering what happened. */
+  html.cinema header > *:not(#musicBtn){display:none}
+  html.cinema header{border:0;padding:0;margin:0;min-height:0;background:none}
+  html.cinema .board-area,
+  html.cinema .chat,
+  html.cinema .notice,
+  html.cinema .jumpme{display:none}
+  html.cinema .wrap{padding:10px;max-width:none}
+  /* the one thing left, kept out of the way in a corner */
+  html.cinema #musicBtn{
+    position:fixed;top:12px;right:12px;z-index:90;
+    background:rgba(10,17,25,.72);border-color:rgba(140,175,215,.35);
+  }
+  html.cinema #musicBtn:hover{background:rgba(10,17,25,.92)}
+
   /* the same shutter as the door, for somebody who has been removed */
   html.booted .wrap,
   html.booted .drawer,
@@ -2745,10 +2765,11 @@ const HELP_HTML = `
      theirs off.</p>
 
   <h5>MVP</h5>
-  <p><span class="k">MVP</span> alarms everyone on a channel — it asks first, and you can
-     turn that off. Right-click to write your own message; <code>*stars*</code> bold it.</p>
-  <p><span class="k">mvp comms</span> opens a list of what is up and where, like
-     <code>ch18 zak xx:00/30 1/4</code>. They stay until someone clears them.</p>
+  <p><span class="k">MVP</span> alarms everyone on a channel; it asks first. Right-click
+     to write your own message, <code>*stars*</code> bold it.</p>
+  <p><span class="k">mvp comms</span> lists what is up and where, like
+     <code>ch18 zak xx:00/30 1/4</code>. The oldest becomes the alarm message unless you
+     write your own.</p>
   <p><span class="k">29:30</span> is started by hand, and shakes for a minute after a call.</p>
 
   <h5>40 MINUTE ALERT</h5>
@@ -6458,6 +6479,8 @@ function wallLive(){
 
 function syncBgPlayer(){
   const on = wallLive();
+  // nothing in front of the video while it is actually playing
+  document.documentElement.classList.toggle("cinema", on);
   const box = document.getElementById("ytBg");
   if(box) box.hidden = !on;
   if(!on){ if(ytBgPlayer) killBgPlayer(); return; }

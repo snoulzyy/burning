@@ -12,6 +12,24 @@ const CHANNELS = 40;
 const CAP = 4;
 const LOG_MAX = 300;
 const MUSIC_LOG_MAX = 120;
+/* Keep the alarm message in step with the oldest comms line.
+   Somebody posts "ch18 zak xx:00/30 1/4" and that is what the alarm should
+   say — nobody should have to type it twice. Clear that line and the next one
+   takes over. A message written by hand wins and is left alone until it is
+   cleared, at which point following resumes. */
+function followComms(region) {
+  if (!state.mvpMsgAuto) return false;
+  const first = state.mvpNotes[0];
+  const want = first ? first.text : "";
+  if (want === state.mvpMsg) return false;
+  state.mvpMsg = want;
+  if (region) {
+    note(region, want ? `MVP alert message now "${want}"` : "MVP alert message cleared");
+  }
+  io.emit("mvpmsg", state.mvpMsg);
+  return true;
+}
+
 const MVP_NOTES_MAX = 8;      // more than this on screen and none of them get read      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
@@ -129,6 +147,10 @@ function hydrate(saved) {
   });
   if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
   if (typeof state.mvpMsg !== "string") state.mvpMsg = "";
+  /* Whether the alarm message is following the comms or was written by hand.
+     Following is the default, because forgetting to set it is the common
+     mistake; writing one yourself stops it following until you clear it. */
+  if (typeof state.mvpMsgAuto !== "boolean") state.mvpMsgAuto = true;
   // shared music queue. whatever was mid-song when the server stopped is dropped,
   // but the queue itself survives
   if (!state.music || typeof state.music !== "object") state.music = { queue: [], playing: null };
@@ -1659,6 +1681,7 @@ io.on("connection", socket => {
         if (state.mvpNotes.length >= MVP_NOTES_MAX) return;
         state.mvpNotes.push({ id: uid(), text, by, at: Date.now() });
         note(region, `MVP comms: "${text}" — ${by}`);
+        followComms(region);
         persist();
         io.emit("mvpnotes", state.mvpNotes);
         broadcast(region);
@@ -1670,6 +1693,7 @@ io.on("connection", socket => {
         if (i === -1) return;
         const [gone] = state.mvpNotes.splice(i, 1);
         note(region, `MVP comms cleared: "${gone.text}" — by ${by}`);
+        followComms(region);
         persist();
         io.emit("mvpnotes", state.mvpNotes);
         broadcast(region);
@@ -1677,9 +1701,13 @@ io.on("connection", socket => {
       }
       case "mvpmsg": {
         state.mvpMsg = clean(a.text, 140);
+        /* Writing one by hand takes it off the comms until it is cleared —
+           otherwise the next posted line would quietly undo what you wrote. */
+        state.mvpMsgAuto = !state.mvpMsg;
+        if (state.mvpMsgAuto) followComms(null);
         note(region, state.mvpMsg
           ? `MVP alert message set by ${by}`
-          : `MVP alert message reset by ${by}`);
+          : `MVP alert message back to following the comms, by ${by}`);
         persist();
         io.emit("mvpmsg", state.mvpMsg);
         broadcast(region);
