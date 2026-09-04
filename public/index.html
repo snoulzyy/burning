@@ -1150,19 +1150,46 @@
      where the wallpaper switch lives. Tied to the wallpaper actually playing
      rather than to the setting, so turning it on with an empty queue does not
      leave somebody staring at a blank page wondering what happened. */
-  html.cinema header > *:not(#musicBtn){display:none}
+  /* One hide rule listing what stays, rather than hiding everything and then
+     trying to put five things back — there is no honest value to reset display
+     to when the children are a mix of spans and buttons. */
+  html.cinema header > *:not(.timerwrap):not(#mvpBtn):not(#mvpSay):not(#commsBtn):not(#musicBtn){
+    display:none;
+  }
+  html.cinema header{
+    display:flex;align-items:center;gap:8px;justify-content:flex-end;
+    position:fixed;top:10px;right:12px;left:auto;width:auto;z-index:90;
+    padding:6px 8px;border-radius:12px;
+    background:rgba(8,14,21,.66);border:1px solid rgba(140,175,215,.22);
+  }
   html.cinema header{border:0;padding:0;margin:0;min-height:0;background:none}
   html.cinema .board-area,
-  html.cinema .chat,
   html.cinema .notice,
   html.cinema .jumpme{display:none}
+
+  /* Chat stays, tucked into the bottom right and foldable — people talk while
+     they watch, and losing the conversation is worse than losing the board. */
+  html.cinema .chat{
+    position:fixed;right:12px;bottom:12px;z-index:88;margin:0;
+    width:min(380px,calc(100vw - 24px));
+    background:rgba(8,14,21,.82);border-color:rgba(140,175,215,.28);
+  }
+  html.cinema .panes{grid-template-columns:minmax(0,1fr)}
+  html.cinema .pane-log{display:none}          /* just the chat half of it */
+  html.cinema .log{height:clamp(120px,26vh,240px)}
+  html.cinema.chatfold .chat .panes,
+  html.cinema.chatfold .chat .say{display:none}
+  .chatfold-btn{display:none}
+  html.cinema .chatfold-btn{
+    display:grid;place-items:center;position:absolute;top:6px;right:8px;
+    width:24px;height:20px;padding:0;z-index:2;cursor:pointer;
+    font:inherit;font-size:12px;color:var(--dim);
+    background:none;border:0;border-radius:6px;
+  }
+  html.cinema .chatfold-btn:hover{color:var(--text);background:rgba(255,255,255,.08)}
   html.cinema .wrap{padding:10px;max-width:none}
   /* the one thing left, kept out of the way in a corner */
-  html.cinema #musicBtn{
-    position:fixed;top:12px;right:12px;z-index:90;
-    background:rgba(10,17,25,.72);border-color:rgba(140,175,215,.35);
-  }
-  html.cinema #musicBtn:hover{background:rgba(10,17,25,.92)}
+  html.cinema header button{background:rgba(10,17,25,.72)}
 
   /* the same shutter as the door, for somebody who has been removed */
   html.booted .wrap,
@@ -1221,6 +1248,15 @@
      the header — several of those wrapped it onto a second row and made a mess
      of everything beside it. The button never changes width by more than a
      digit, so the header stays on one line however many are posted. */
+  /* what the alarm will say, beside the button that sends it */
+  .mvpsay{
+    flex:0 1 auto;min-width:0;max-width:260px;
+    padding:6px 10px;border-radius:8px;
+    font-size:11.5px;letter-spacing:.02em;color:#fbbf24;
+    background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.35);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .mvpsay[hidden]{display:none}
   .commsbtn{white-space:nowrap;flex:none}
   .commsbtn.some{
     color:var(--amber);border-color:rgba(245,158,11,.6);
@@ -1826,6 +1862,7 @@
       <button class="timerreset" id="mvpTimerReset" title="Restart the countdown from 29:30" aria-label="Restart countdown"></button>
     </span>
     <button class="mvpbtn" id="mvpBtn" title="Alarm everyone who's on a channel right now">MVP</button>
+    <span class="mvpsay" id="mvpSay" hidden></span>
     <button class="ghost commsbtn" id="commsBtn" title="What is up and where">mvp comms</button>
     <button class="ghost" id="musicBtn" title="Shared song queue">♪ music</button>
     <button class="donate-btn" id="donateBtn" hidden>donate</button>
@@ -1885,6 +1922,7 @@
 
 
   <section class="chat">
+    <button class="chatfold-btn" id="chatFold" title="Fold the chat away">–</button>
     <div class="panes">
       <div class="pane">
         <div class="pane-head"><span class="dot"></span><span id="logTitle">ACTIVITY</span></div>
@@ -5411,6 +5449,23 @@ socket.on("banned", () => {
   } catch(e){}
 });
 
+/* Folding the chat while the video is on. Only appears in that mode, where
+   the chat floats over the corner and is the one thing you might want out of
+   the way without losing the whole view. */
+const chatFold = document.getElementById("chatFold");
+if(chatFold) chatFold.onclick = () => {
+  const on = document.documentElement.classList.toggle("chatfold");
+  chatFold.textContent = on ? "+" : "\u2013";
+  chatFold.title = on ? "Bring the chat back" : "Fold the chat away";
+  try { localStorage.setItem("ct:chatfold", on ? "1" : "0") } catch(e){}
+};
+try {
+  if(localStorage.getItem("ct:chatfold") === "1"){
+    document.documentElement.classList.add("chatfold");
+    if(chatFold){ chatFold.textContent = "+"; chatFold.title = "Bring the chat back"; }
+  }
+} catch(e){}
+
 socket.on("donate", u => {
   donateUrl = typeof u === "string" ? u : "";
   paintDonate();
@@ -5588,6 +5643,15 @@ function paintMvpTitle(){
   if(typeof mvpBtn === "undefined" || !mvpBtn) return;
   mvpBtn.title = (mvpMsg ? 'Alarm says: "' + mvpMsg + '"' : "Alarm everyone who's on a channel right now")
     + "  ·  right-click to change the message";
+  /* Say it out loud, next to the button.
+     It used to live only in the tooltip, so the message could follow the comms
+     perfectly and nobody would ever see it change — which reads as the feature
+     not working at all. */
+  const say = document.getElementById("mvpSay");
+  if(!say) return;
+  say.hidden = !mvpMsg;
+  say.textContent = mvpMsg || "";
+  say.title = mvpMsg ? mvpMsg + "  ·  right-click MVP to change it" : "";
 }
 
 function editMvpMessage(){
