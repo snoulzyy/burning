@@ -1961,6 +1961,16 @@ io.on("connection", socket => {
 
   // "MVP is up" — one shout that reaches anyone currently on a channel, any board
   let lastMvp = 0;
+  /* Whose clock is right.
+     A song's position is worked out as "now minus when it started", but the
+     start is stamped by this machine's clock and the subtraction happens on
+     the visitor's. If theirs is three seconds fast, every song opens three
+     seconds in and no amount of seeking fixes it. The reply carries the time
+     the ping was sent so the browser can allow for the round trip. */
+  socket.on("timeping", t0 => {
+    socket.emit("timepong", { t0: Number(t0) || 0, s: Date.now() });
+  });
+
   // the name this browser goes by, for the watching list
   socket.on("whoami", n => {
     const who = clean(n, 24);

@@ -1177,14 +1177,29 @@
   html.cinema .panes{grid-template-columns:minmax(0,1fr)}
   html.cinema .pane-log{display:none}          /* just the chat half of it */
   html.cinema .log{height:clamp(120px,26vh,240px)}
+  /* Folded, it has to stay something you can press.
+     Hiding the panes collapsed the box to nothing and took the button that
+     brings it back with it, so there was no way out. Folded it becomes a small
+     labelled pill instead. */
   html.cinema.chatfold .chat .panes,
   html.cinema.chatfold .chat .say{display:none}
+  html.cinema.chatfold .chat{
+    width:auto;min-height:32px;padding:0 8px 0 12px;
+    display:flex;align-items:center;gap:8px;
+  }
+  html.cinema.chatfold .chat::before{
+    content:"chat";
+    font-size:11px;letter-spacing:.14em;color:var(--dim);
+  }
+  html.cinema.chatfold .chatfold-btn{
+    position:static;width:22px;height:22px;font-size:14px;
+  }
   .chatfold-btn{display:none}
   html.cinema .chatfold-btn{
     display:grid;place-items:center;position:absolute;top:6px;right:8px;
     width:24px;height:20px;padding:0;z-index:2;cursor:pointer;
     font:inherit;font-size:12px;color:var(--dim);
-    background:none;border:0;border-radius:6px;
+    background:rgba(8,14,21,.7);border:0;border-radius:6px;
   }
   html.cinema .chatfold-btn:hover{color:var(--text);background:rgba(255,255,255,.08)}
   html.cinema .wrap{padding:10px;max-width:none}
@@ -1257,6 +1272,11 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   .mvpsay[hidden]{display:none}
+  /* pinned by hand rather than following the comms */
+  .mvpsay.pinned{
+    color:#c4b5fd;background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.45);
+  }
+  .mvpsay.pinned::after{content:" \00b7 pinned";opacity:.65;font-size:9.5px}
   .commsbtn{white-space:nowrap;flex:none}
   .commsbtn.some{
     color:var(--amber);border-color:rgba(245,158,11,.6);
@@ -5651,11 +5671,26 @@ function paintMvpTitle(){
   if(!say) return;
   say.hidden = !mvpMsg;
   say.textContent = mvpMsg || "";
-  say.title = mvpMsg ? mvpMsg + "  ·  right-click MVP to change it" : "";
+  /* Show whether this is following the comms or was pinned by hand. Without
+     it there is no way to tell why a new comms line is not showing up. */
+  const pinned = !!mvpMsg && !(mvpNotes[0] && mvpNotes[0].text === mvpMsg);
+  say.classList.toggle("pinned", pinned);
+  say.title = !mvpMsg ? ""
+    : pinned
+      ? mvpMsg + "\n\nSet by hand, so it is not following the comms."
+        + " Right-click MVP and clear it to follow them again."
+      : mvpMsg + "\n\nFollowing the comms. Right-click MVP to write your own.";
 }
 
 function editMvpMessage(){
-  const v = prompt("What should the MVP alarm say? (empty for the default)", mvpMsg || "");
+  /* Say what clearing it does. "(empty for the default)" gave no hint that an
+     empty box hands the message back to the comms, so anyone who set one by
+     hand had no way of knowing how to undo it. */
+  const asked = mvpNotes.length
+    ? "What should the MVP alarm say?\n\nLeave it empty to follow the comms instead"
+      + " — that would be:\n" + mvpNotes[0].text
+    : "What should the MVP alarm say?\n\nLeave it empty for the default.";
+  const v = prompt(asked, mvpMsg || "");
   if(v === null) return;
   send({ type:"mvpmsg", text: v.trim().slice(0,140) });
 }
@@ -6819,9 +6854,36 @@ function reportTitle(){
    No special case for "this song is new": both the drawer player and the
    wallpaper ask this same question and get the same answer whenever they
    happen to load, which is the only way they stay in step. */
+/* The gap between this browser's clock and the server's.
+   Everything shared is timed against the server, so a browser whose clock is a
+   few seconds out opens every song that far in — and seeking cannot fix it,
+   because the seek is measured against the same wrong clock. Measured on
+   connect and occasionally after, keeping whichever sample had the shortest
+   round trip, since that one has the least guesswork in it. */
+let clockSkew = 0, bestTrip = Infinity;
+function serverNow(){ return Date.now() + clockSkew; }
+
+socket.on("timepong", p => {
+  if(!p || !p.t0) return;
+  const trip = Date.now() - p.t0;
+  if(trip < 0 || trip > 4000) return;              // too noisy to learn from
+  if(trip > bestTrip) return;                      // we have a cleaner sample
+  bestTrip = trip;
+  clockSkew = p.s + trip / 2 - Date.now();
+});
+
+function syncClock(){
+  bestTrip = Infinity;
+  for(let i = 0; i < 4; i++){
+    setTimeout(() => socket.emit("timeping", Date.now()), i * 250);
+  }
+}
+socket.on("connect", () => setTimeout(syncClock, 400));
+setInterval(syncClock, 10 * 60000);                // clocks drift over an evening
+
 function expectedOffset(cur){
   if(cur.paused) return Math.max(0, cur.at || 0);   // paused: it sits where it stopped
-  return Math.max(0, (Date.now() - cur.startedAt) / 1000);
+  return Math.max(0, (serverNow() - cur.startedAt) / 1000);
 }
 
 let ytVideo = null;      // what's actually loaded in the player
