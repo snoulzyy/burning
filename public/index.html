@@ -1177,6 +1177,22 @@
   html.cinema .panes{grid-template-columns:minmax(0,1fr)}
   html.cinema .pane-log{display:none}          /* just the chat half of it */
   html.cinema .log{height:clamp(120px,26vh,240px)}
+
+  /* Room to actually type.
+     The message row carries your name, a separator, the box, the emote button
+     and a hint about the shorthand — fine across a full-width panel, hopeless
+     in a 380px corner, where the box was left a couple of characters wide. The
+     hint goes, the name gives way, and the box takes what is left. */
+  html.cinema .say{flex-wrap:nowrap;gap:6px;padding:9px 10px}
+  html.cinema .say .sep{display:none}
+  html.cinema .say .who-btn{
+    flex:0 1 auto;min-width:0;max-width:90px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  html.cinema #sayInput{
+    flex:1 1 auto;min-width:0;width:auto;
+    padding:9px 11px;font-size:13px;
+  }
   /* Folded, it has to stay something you can press.
      Hiding the panes collapsed the box to nothing and took the button that
      brings it back with it, so there was no way out. Folded it becomes a small
@@ -1959,7 +1975,6 @@
       <span class="sep" style="color:#3a4c5e">·</span>
       <input id="sayInput" placeholder="Message… or 12 weenie / 12 70%" maxlength="200" aria-label="Send a message">
       <button class="emote-btn" id="emoteBtn" title="Emotes" aria-label="Emotes" hidden>☺</button>
-      <span class="tip"><code>12 name</code> adds · <code>12 70%</code> sets burning</span>
     </div>
   </section>
 
