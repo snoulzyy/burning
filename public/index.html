@@ -1175,8 +1175,12 @@
     background:rgba(8,14,21,.82);border-color:rgba(140,175,215,.28);
   }
   html.cinema .panes{grid-template-columns:minmax(0,1fr)}
-  html.cinema .pane-log{display:none}          /* just the chat half of it */
-  html.cinema .log{height:clamp(120px,26vh,240px)}
+  /* Just the chat half. The activity pane is plain `.pane` — there is no
+     `.pane-log`, so the rule that was meant to hide it matched nothing and the
+     board's log kept half the panel. */
+  html.cinema .panes .pane:not(.pane-chat){display:none}
+  html.cinema .chat{width:min(420px,calc(100vw - 24px))}
+  html.cinema .log{height:clamp(240px,44vh,460px)}
 
   /* Room to actually type.
      The message row carries your name, a separator, the box, the emote button
