@@ -48,6 +48,7 @@ const REGIONS = [
   { id: "GOB1", area: "GOB", enabled: true, levels: [298, 299] },
   { id: "GOB4", area: "GOB", enabled: true, levels: [298, 299] },
   { id: "GOB5", area: "GOB", enabled: true, levels: [298, 299] },
+  { id: "GOB6", area: "GOB", enabled: true, levels: [298, 299] },
   { id: "GOB7", area: "GOB", enabled: true, levels: [298, 299] },
   { id: "GOB8", area: "GOB", enabled: true, levels: [298, 299] }
 ];
