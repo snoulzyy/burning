@@ -334,6 +334,57 @@
      these sit in a list of forty channels, and anything louder would make the
      board hard to read rather than nice to look at. */
   .fx-glow{filter:drop-shadow(0 0 5px currentColor)}
+
+  /* ---------------- the loud ones ----------------
+     glow and pulse are barely there next to an outline, so these actually do
+     something. Each is drawn with shadows and filters on the text itself
+     rather than extra elements, which keeps them working on a name that is
+     already carrying a gradient. */
+
+  /* a strike, then dark, then a couple of aftershocks */
+  .fx-lightning{
+    animation:fxBolt 3.6s steps(1,end) infinite;
+    text-shadow:0 0 6px #bae6fd, 0 0 14px #38bdf8;
+  }
+  @keyframes fxBolt{
+    0%,58%   {filter:brightness(1);   text-shadow:0 0 5px rgba(186,230,253,.5)}
+    60%      {filter:brightness(2.6); text-shadow:0 0 3px #fff,0 0 12px #7dd3fc,0 0 26px #0ea5e9}
+    62%      {filter:brightness(.75); text-shadow:0 0 4px rgba(56,189,248,.5)}
+    66%      {filter:brightness(2.9); text-shadow:0 0 2px #fff,0 0 16px #bae6fd,0 0 34px #38bdf8}
+    69%      {filter:brightness(.7);  text-shadow:0 0 4px rgba(56,189,248,.4)}
+    73%      {filter:brightness(2.1); text-shadow:0 0 6px #e0f2fe,0 0 20px #38bdf8}
+    78%,100% {filter:brightness(1);   text-shadow:0 0 5px rgba(186,230,253,.5)}
+  }
+
+  /* heat haze: warm shadows breathing, with a slight lift */
+  .fx-fire{animation:fxFire 1.5s ease-in-out infinite}
+  @keyframes fxFire{
+    0%,100%{text-shadow:0 -1px 5px #fbbf24, 0 -3px 11px #f97316, 0 -6px 18px rgba(220,38,38,.75);
+            transform:translateY(0)}
+    35%    {text-shadow:0 -2px 8px #fde68a, 0 -5px 15px #fb923c, 0 -9px 24px rgba(239,68,68,.8);
+            transform:translateY(-.6px)}
+    65%    {text-shadow:0 -1px 6px #fcd34d, 0 -4px 12px #ea580c, 0 -7px 20px rgba(220,38,38,.7);
+            transform:translateY(-.2px)}
+  }
+
+  /* its own colours, sliding — this one ignores the name's palette on purpose */
+  .fx-rainbow{
+    background-image:linear-gradient(100deg,#f87171,#fbbf24,#4ade80,#22d3ee,#a78bfa,#f472b6,#f87171) !important;
+    background-size:300% 100% !important;
+    -webkit-background-clip:text !important; background-clip:text !important;
+    color:transparent !important; -webkit-text-fill-color:transparent !important;
+    animation:fxRain 4s linear infinite;
+    filter:saturate(1.3) drop-shadow(0 0 6px rgba(255,255,255,.25));
+  }
+  @keyframes fxRain{to{background-position:300% 0}}
+
+  /* a live wire: the colour splits and jitters */
+  .fx-electric{animation:fxZap .18s steps(2,end) infinite}
+  @keyframes fxZap{
+    0%  {text-shadow:-1px 0 2px #22d3ee, 1px 0 2px #f472b6, 0 0 9px rgba(34,211,238,.8)}
+    50% {text-shadow: 1px 0 2px #22d3ee,-1px 0 2px #f472b6, 0 0 13px rgba(244,114,182,.75)}
+    100%{text-shadow:-1px 0 3px #a78bfa, 1px 0 3px #22d3ee, 0 0 11px rgba(167,139,250,.8)}
+  }
   .fx-pulse{animation:fxPulse 2.4s ease-in-out infinite}
   @keyframes fxPulse{
     0%,100%{opacity:1;filter:drop-shadow(0 0 3px currentColor)}
@@ -348,7 +399,11 @@
   }
   @keyframes fxShimmer{ from{background-position:160% 0} to{background-position:-60% 0} }
   @media(prefers-reduced-motion:reduce){
-    .fx-pulse,.fx-shimmer::after{animation:none}
+    /* anybody who has asked for less movement keeps the colour and loses the
+       motion — the loud ones are exactly what that setting is about */
+    .fx-pulse,.fx-shimmer::after,
+    .fx-lightning,.fx-fire,.fx-rainbow,.fx-electric{animation:none}
+    .fx-fire{transform:none}
   }
 
   .chip.placed{opacity:.62;cursor:default}
@@ -2305,10 +2360,14 @@ function inkStops(c1, c2, c3){
    Kept to a short list the page knows how to draw, and applied as a class
    rather than inline style so the animation can be defined once. */
 const FX_LIST = [
-  { id:"",        name:"none" },
-  { id:"glow",    name:"glow" },
-  { id:"shimmer", name:"shimmer" },
-  { id:"pulse",   name:"pulse" }
+  { id:"",          name:"none" },
+  { id:"glow",      name:"glow" },
+  { id:"shimmer",   name:"shimmer" },
+  { id:"pulse",     name:"pulse" },
+  { id:"lightning", name:"lightning" },
+  { id:"fire",      name:"fire" },
+  { id:"rainbow",   name:"rainbow" },
+  { id:"electric",  name:"electric" }
 ];
 function applyFx(el, fx){
   if(!el) return;

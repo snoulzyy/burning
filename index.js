@@ -31,7 +31,7 @@ function followComms(region) {
 }
 
 // the flourishes a name may carry; anything else is refused
-const FX = ["glow", "shimmer", "pulse"];
+const FX = ["glow", "shimmer", "pulse", "lightning", "fire", "rainbow", "electric"];
 
 const MVP_NOTES_MAX = 8;      // more than this on screen and none of them get read      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
