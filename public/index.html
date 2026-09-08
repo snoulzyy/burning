@@ -509,8 +509,24 @@
   .colmenu{
     position:fixed;z-index:60;padding:10px;border-radius:12px;
     background:#0a1119;border:1px solid #22303f;box-shadow:0 18px 44px rgba(0,0,0,.7);
-    /* three slots is a tall box — let it scroll rather than run off the screen */
-    max-height:calc(100vh - 24px);overflow-y:auto;scrollbar-width:thin;
+    /* Three colour slots, thirty-seven effects, five schemes and a preview is a
+       lot of box. Width had never been set, so it stretched to whatever was
+       available and the whole thing filled the screen. Held to a readable
+       column, and shorter than the window so the board stays visible behind. */
+    width:min(430px,calc(100vw - 24px));
+    max-height:min(78vh,620px);overflow-y:auto;scrollbar-width:thin;
+  }
+  /* The preview is the thing you are looking at while you choose, so it stays
+     put at the bottom of the panel instead of scrolling off with everything
+     else. Same for the effect row, which is long enough to scroll by itself. */
+  .colmenu .stuckprev{
+    position:sticky;bottom:-10px;z-index:2;margin-top:10px;
+    background:#0a1119;border-top:1px solid #1a2532;
+    padding-top:10px;padding-bottom:4px;
+  }
+  .colmenu .fxrow{
+    max-height:108px;overflow-y:auto;scrollbar-width:thin;
+    padding:2px;border:1px solid #16202b;border-radius:9px;
   }
   .colmenu::-webkit-scrollbar{width:8px}
   .colmenu::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:8px}
@@ -4526,7 +4542,7 @@ function openColorMenu(anchor, person){
 
   // the preview: what it will look like, and the codes, before anything is sent
   const prev = document.createElement("div");
-  prev.className = "col-previewbox";
+  prev.className = "col-previewbox stuckprev";
   prevName = document.createElement("div");
   prevName.className = "col-preview";
   prevHex = document.createElement("div");
