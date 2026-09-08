@@ -31,7 +31,8 @@ function followComms(region) {
 }
 
 // the flourishes a name may carry; anything else is refused
-const FX = ["glow", "shimmer", "pulse", "lightning", "fire", "rainbow", "electric"];
+// every flourish a name may carry; anything not here is refused outright
+const FX = ["halo", "beacon", "bloom", "throb", "heartbeat", "breathe", "flicker", "strobe", "blink", "ghost", "haze", "sharpen", "bob", "drift", "wobble", "tilt", "shiver", "jitter", "zoom", "ripple", "echo", "deep", "lift", "shadowy", "lightning", "fire", "ember", "storm", "neon", "siren", "cyber", "spark", "toxic", "frost", "void", "blood", "solar"];
 
 const MVP_NOTES_MAX = 8;      // more than this on screen and none of them get read      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
