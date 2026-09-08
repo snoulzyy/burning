@@ -30,6 +30,9 @@ function followComms(region) {
   return true;
 }
 
+// the flourishes a name may carry; anything else is refused
+const FX = ["glow", "shimmer", "pulse"];
+
 const MVP_NOTES_MAX = 8;      // more than this on screen and none of them get read      // the music log is shown on every board, so keep it short
 const MVP_TIMER_MS = (29 * 60 + 30) * 1000;   // 29:30
 
@@ -1142,6 +1145,54 @@ function scheduleDrop(region, idx) {
   }, wait + 250));
 }
 
+/* Apply the drops that have landed on channels people are still sitting on.
+   The maths only ran when the last person left, so while a group was farming
+   a channel the stored figure never moved — the card showed a projection in
+   italics and the real number stayed where it was until somebody stepped off.
+   This walks the boards and writes those drops down as they fall, so the
+   number on screen is the number, and the log has a line for each one.
+   The reading is stamped at the mark it belongs to rather than at the moment
+   the sweep happened, so the marks stay on their fifteens instead of drifting
+   later by however late this ran. */
+function sweepDrops() {
+  const t = Date.now();
+  const every = state.proj.dropEvery * 60000;
+  const step = state.proj.drop;
+  let saved = false;
+
+  REGIONS.forEach(r => {
+    const board = state[r.id] && state[r.id].channels;
+    if (!board) return;
+    let touched = false;
+
+    board.forEach((c, i) => {
+      if (!c.entries.length) return;              // empty ones climb, they do not fall
+      const cycle = c.occupiedAt || c.pctAt || 0;
+      if (!cycle) return;
+
+      const landed = Math.floor(Math.max(0, t - cycle) / every);
+      const readAt = Math.min(t, Math.max(c.pctAt || 0, cycle));
+      const atRead = Math.floor(Math.max(0, readAt - cycle) / every);
+      const owed = Math.max(0, landed - atRead);
+      if (!owed) return;
+
+      const was = c.pct;
+      const next = Math.max(0, Math.min(100, was - step * owed));
+      c.pctAt = cycle + landed * every;           // the mark, not the sweep
+      if (next === was) return;                   // already at nothing
+      c.pct = next;
+      note(r.id, `${ch(i)} burning ${was}% → ${next}% — `
+        + `${owed} drop${owed === 1 ? "" : "s"} while sat on`);
+      touched = true;
+      saved = true;
+    });
+
+    if (touched) broadcast(r.id);
+  });
+
+  if (saved) persist();
+}
+
 // after a restart, pick up every drop that was owed — including any that fell
 // while the process was down
 function scheduleAllDrops() {
@@ -1787,6 +1838,23 @@ io.on("connection", socket => {
         broadcastRoster();
         return;
       }
+      case "person-fx": {
+        /* A flourish on the name. Owner only, same as its colour, and only one
+           of the handful the page knows how to draw — anything else would be a
+           class name from a stranger landing in everybody's markup. */
+        const p = findPerson(a.id);
+        const token = clean(a.token, 64);
+        if (!p) return;
+        if (p.claimedBy && p.claimedBy !== token) return;
+        const fx = clean(a.fx, 16);
+        if (fx && FX.indexOf(fx) === -1) return;
+        if ((p.fx || "") === fx) return;
+        p.fx = fx;
+        persist();
+        broadcastRoster();
+        live.forEach(broadcast);
+        return;
+      }
       case "person-level": {
         /* What level this character is, so the board can tell whether they can
            farm here. Owner only, same as renaming. 0 clears it, and a name with
@@ -2066,7 +2134,10 @@ async function main() {
   hydrate(await storage.load());
   scheduleMvpTimer();
   scheduleSongEnd();
-  scheduleAllDrops();     // any drop that fell while we were down lands now
+  scheduleAllDrops();
+// and keep writing them down while people are still on the channel
+sweepDrops();
+setInterval(sweepDrops, 20000);     // any drop that fell while we were down lands now
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Channel tracker on :${PORT} — open /${live[0].toLowerCase()}`);
   });

@@ -329,6 +329,28 @@
     font-size:10px;letter-spacing:.03em;color:var(--dim);
   }
   .pmeta.where{color:var(--amber)}
+  /* ---------------- name flourishes ----------------
+     One rule each, on top of whatever colour the name already has. Kept subtle:
+     these sit in a list of forty channels, and anything louder would make the
+     board hard to read rather than nice to look at. */
+  .fx-glow{filter:drop-shadow(0 0 5px currentColor)}
+  .fx-pulse{animation:fxPulse 2.4s ease-in-out infinite}
+  @keyframes fxPulse{
+    0%,100%{opacity:1;filter:drop-shadow(0 0 3px currentColor)}
+    50%    {opacity:.72;filter:drop-shadow(0 0 9px currentColor)}
+  }
+  .fx-shimmer{position:relative;overflow:hidden}
+  .fx-shimmer::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.55) 50%,transparent 62%);
+    background-size:260% 100%;
+    animation:fxShimmer 3.4s linear infinite;
+  }
+  @keyframes fxShimmer{ from{background-position:160% 0} to{background-position:-60% 0} }
+  @media(prefers-reduced-motion:reduce){
+    .fx-pulse,.fx-shimmer::after{animation:none}
+  }
+
   .chip.placed{opacity:.62;cursor:default}
   /* one width for the level slot, filled or empty, so the row lines up */
   .plevel,.pslot{flex:none;width:34px;height:20px;box-sizing:border-box}
@@ -463,6 +485,16 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   .colcustom{display:flex;align-items:center;gap:6px;margin-top:9px}
+  .fxrow{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:12px}
+  .fxlab{
+    width:100%;font-size:9px;letter-spacing:.16em;color:var(--dim);margin-bottom:1px;
+  }
+  .fxbtn{
+    padding:5px 9px;border-radius:7px;cursor:pointer;font:inherit;font-size:11px;
+    color:var(--dim);background:var(--raise);border:1px solid var(--line);
+  }
+  .fxbtn:hover{color:var(--text);border-color:#2d3f52}
+  .fxbtn.on{color:var(--cyan);border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.10)}
   .colcustom input[type=color]{
     width:34px;height:28px;padding:0;cursor:pointer;background:none;
     border:1px solid var(--line);border-radius:6px;
@@ -2140,6 +2172,7 @@ try {
 const PALETTE = ["#22d3ee","#2dd4bf","#22c55e","#a3e635","#eab308","#f59e0b",
                  "#f97316","#ef4444","#f472b6","#a855f7","#60a5fa","#dbe7f2"];
 let colorOf = {};       // pid -> colour, rebuilt whenever the roster arrives
+let fxOf = {};          // pid -> the flourish on that name, same rebuild
 let color2Of = {};      // pid -> second colour, for the ones who blend
 let color3Of = {};      // pid -> third colour
 
@@ -2211,8 +2244,11 @@ function recomputeColors(){
   color2Of = {};
   color3Of = {};
   colorByName = {};
+  fxOf = {};
   Object.keys(rosters).forEach(area =>
     (rosters[area] || []).forEach(p => {
+      // an effect stands on its own — somebody may want a glow with no colour
+      if(p.fx) fxOf[p.id] = p.fx;
       if(!p.color) return;
       colorOf[p.id] = p.color;
       if(p.color2) color2Of[p.id] = p.color2;
@@ -2265,6 +2301,21 @@ function inkStops(c1, c2, c3){
 }
 
 // paint text in one colour, or as a gradient across two or three
+/* A flourish on a name, on top of its colour.
+   Kept to a short list the page knows how to draw, and applied as a class
+   rather than inline style so the animation can be defined once. */
+const FX_LIST = [
+  { id:"",        name:"none" },
+  { id:"glow",    name:"glow" },
+  { id:"shimmer", name:"shimmer" },
+  { id:"pulse",   name:"pulse" }
+];
+function applyFx(el, fx){
+  if(!el) return;
+  FX_LIST.forEach(f => { if(f.id) el.classList.remove("fx-" + f.id); });
+  if(fx && FX_LIST.some(f => f.id === fx)) el.classList.add("fx-" + fx);
+}
+
 function inkText(el, c1, c2, c3){
   const cols = inkStops(c1, c2, c3);
   if(!cols.length) return;
@@ -4217,6 +4268,33 @@ function openColorMenu(anchor, person){
       v => { const c = parseHex(v); if(c) setSlot(i, c); }));
   });
 
+  /* A flourish on top of the colour.
+     The drawing and the storing were both already here; nothing ever offered
+     the choice, so no name could carry one. Sent on its own rather than with
+     the colours, so trying effects does not disturb a set you are happy with. */
+  let fxNow = person.fx || "";
+  const fxWrap = document.createElement("div");
+  fxWrap.className = "fxrow";
+  const fxLab = document.createElement("span");
+  fxLab.className = "fxlab";
+  fxLab.textContent = "EFFECT";
+  fxWrap.appendChild(fxLab);
+  FX_LIST.forEach(fx => {
+    const b = document.createElement("button");
+    b.className = "fxbtn" + (fxNow === fx.id ? " on" : "");
+    b.textContent = fx.name;
+    b.title = fx.id ? "Give " + person.name + " a " + fx.name : "No effect";
+    b.onclick = () => {
+      fxNow = fx.id;
+      [...fxWrap.querySelectorAll(".fxbtn")].forEach(x => x.classList.remove("on"));
+      b.classList.add("on");
+      applyFx(prevName, fxNow);          // show it on the preview straight away
+      send({ type:"person-fx", id: person.id, token: myToken, fx: fxNow });
+    };
+    fxWrap.appendChild(b);
+  });
+  m.appendChild(fxWrap);
+
   /* Fill the other two slots from the first. Nothing here commits on its own:
      pick a relationship, drag the spread, watch the preview at the bottom, and
      press apply when it looks right. */
@@ -4236,6 +4314,7 @@ function openColorMenu(anchor, person){
     if(prevName){
       prevName.textContent = person.name;
       inkText(prevName, set[0], set[1], set[2]);
+      applyFx(prevName, fxNow);
     }
     if(prevHex){
       prevHex.innerHTML = "";
@@ -4533,6 +4612,8 @@ function renderBench(){
       inkText(nm, p.color, p.color2, p.color3);
       nm.style.fontWeight = "700";
     }
+    // an effect stands on its own — a glow needs no colour behind it
+    applyFx(nm, p.fx);
     chip.appendChild(nm);
 
     if(!here){
@@ -5079,6 +5160,7 @@ function row(en,ci){
     const who = document.createElement("span");
     who.className = "who"; who.textContent = en.name;
     inkText(who, col, col2, col3);
+    applyFx(who, en.pid ? fxOf[en.pid] : "");
     who.draggable = true; who.title = "Drag to another channel";
     who.ondragstart = e => {
       e.stopPropagation();
