@@ -3752,6 +3752,47 @@ socket.on("sync", s => {
   render();
 });
 
+/* Only what moved. A patch carries the channels that changed and the lines the
+   activity log has just gained — a tap on one channel is a few hundred bytes
+   rather than all forty channels and three hundred log lines.
+
+   The channels are written into the board in place, so `board` and `boards[r]`
+   stay the same array and nothing that points at them goes stale.
+
+   Log lines are numbered by the server. Anything at or below the number we
+   already hold is a line we have printed — which happens when a browser
+   connects between an action and its patch, so the sync it got already
+   contained the line. A number that skips means one went missing, and the
+   whole board is asked for again. */
+const LOG_MAX = 300;                        // same cap the server keeps
+
+socket.on("patch", p => {
+  if(!p || !p.region) return;
+  const r = p.region;
+  const b = boards[r];
+  if(!b) return;                            // no board here yet; the sync brings it
+  if(p.chans){
+    for(const k in p.chans){
+      const i = Number(k);
+      if(i >= 0 && i < b.length) b[i] = p.chans[k];
+    }
+  }
+  if(p.log && p.log.length){
+    const l = logs[r] || (logs[r] = []);
+    const last = l.length ? (l[l.length - 1].n || 0) : 0;
+    const add = p.log.filter(e => !e.n || e.n > last);
+    if(add.length && last && add[0].n > last + 1) socket.emit("resync", r);
+    if(add.length){
+      l.push.apply(l, add);
+      if(l.length > LOG_MAX) l.splice(0, l.length - LOG_MAX);
+    }
+  }
+  if(r !== region) return;                  // background board, nothing to redraw
+  if(editing){ pending = { region: r, channels: boards[r], log: logs[r] }; return; }
+  board = boards[r]; log = logs[r];
+  render();
+});
+
 function flush(){ if(pending){ board = pending.channels; log = pending.log; pending = null } }
 
 /* ---------------- projected burning ----------------

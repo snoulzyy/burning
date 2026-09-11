@@ -74,7 +74,8 @@ const byId = id => REGIONS.find(r => r.id === id);
 /* ---------------- state ---------------- */
 const blankRegion = () => ({
   channels: Array.from({ length: CHANNELS }, () => ({ pct: 100, pctAt: null, emptiedAt: null, occupiedAt: null, pendingAt: null, entries: [] })),
-  log: []
+  log: [],
+  logSeq: 0
 });
 
 let state = {};
@@ -253,9 +254,78 @@ function hydrate(saved) {
 
   state.chat.sort((a, b) => a.t - b.t);
   if (state.chat.length > LOG_MAX) state.chat.splice(0, state.chat.length - LOG_MAX);
+
+  /* Every activity line gets a number, counting from one at each boot.
+     A patch carries only the lines the log has just gained, and the browser
+     decides what is new by that number — two timestamps in the same
+     millisecond are common enough that time cannot do the job. Renumbering on
+     boot is safe because a restart drops every socket, and each browser asks
+     for the whole board again the moment it reconnects. */
+  live.forEach(r => {
+    const R = state[r];
+    R.log.forEach((e, i) => { e.n = i + 1; });
+    R.logSeq = R.log.length;
+  });
 }
 
-const persist = () => storage.save(state);
+/* ---------------- writing it down ----------------
+   Every action used to send the whole state document to Neon — both logs, the
+   chat, the people list, the eleven boards, a third of a megabyte — because
+   one number moved. Forty taps in a minute meant forty copies of the same
+   document, and that is most of what the outbound bandwidth was.
+
+   A change now just marks the state dirty and one write goes out per window.
+   The document is written whole either way, so a window holding forty changes
+   costs exactly what a window holding one costs.
+
+   What this trades away: the last few seconds are not on disk yet. A deploy or
+   a restart is covered — the shutdown flush below writes before the process
+   goes, which is the case that actually happens. A hard crash loses at most
+   one window, and the board is rebuilt from what everyone can still see. */
+const SAVE_WINDOW = 4000;
+let saveTimer = null;
+let saveDirty = false;
+let saveInFlight = null;
+
+function persist() {
+  saveDirty = true;
+  if (saveTimer) return;                       // a write is already booked
+  saveTimer = setTimeout(() => { saveTimer = null; writeNow(); }, SAVE_WINDOW);
+}
+
+function writeNow() {
+  if (saveInFlight) return saveInFlight;       // one at a time; it re-books itself
+  if (!saveDirty) return Promise.resolve();
+  saveDirty = false;
+  saveInFlight = Promise.resolve()
+    .then(() => storage.save(state))
+    .catch(err => {
+      saveDirty = true;                        // put it back and try the next window
+      console.error("save failed:", (err && err.message) || err);
+    })
+    .then(() => {
+      saveInFlight = null;
+      if (saveDirty) persist();
+    });
+  return saveInFlight;
+}
+
+// Render sends SIGTERM on every deploy. Get it on disk first.
+let goingDown = false;
+async function saveAndGo() {
+  if (goingDown) return;
+  goingDown = true;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    await writeNow();
+  } catch (e) {
+    console.error("shutdown save failed:", (e && e.message) || e);
+  }
+  process.exit(0);
+}
+["SIGTERM", "SIGINT"].forEach(sig => process.once(sig, saveAndGo));
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ch = i => "CH" + String(i + 1).padStart(2, "0");
@@ -288,10 +358,22 @@ const nameless = n => {
   return !t || t === "guest" || t === "someone";
 };
 
+/* Lines the log has gained since the last thing was sent out, per region.
+   A patch carries these and nothing else of the log; a full sync carries the
+   whole log, so it empties this on the way past. */
+const fresh = new Map();
+
 function note(region, msg, who) {
-  const log = state[region].log;
-  log.push({ t: Date.now(), who: who || null, msg });
+  const R = state[region];
+  const log = R.log;
+  const line = { t: Date.now(), who: who || null, msg, n: ++R.logSeq };
+  log.push(line);
   if (log.length > LOG_MAX) log.splice(0, log.length - LOG_MAX);
+  const f = fresh.get(region) || [];
+  f.push(line);
+  if (f.length > LOG_MAX) f.splice(0, f.length - LOG_MAX);
+  fresh.set(region, f);
+  return line;
 }
 
 /* ---------------- web ---------------- */
@@ -737,12 +819,11 @@ if (ADMIN_KEY) {
       const list = roster();
       const p = list.find(x => x.id === q.drop);
       if (p) {
+        const snaps = snapAll();
         liftPerson(p.id);
         state.rosters.ALL = list.filter(x => x.id !== p.id);
-        live.forEach(r => {
-          note(r, `${p.name} removed from the people list`);
-          broadcast(r);
-        });
+        live.forEach(r => note(r, `${p.name} removed from the people list`));
+        sendPatches(snaps);
         broadcastRoster();
         changed = true;
       }
@@ -783,6 +864,9 @@ if (ADMIN_KEY) {
 
     if (changed) {
       persist();
+      /* The lines the admin page just wrote. Anything that already went out
+         above finds nothing left to send. */
+      sendPatches(null);
       dropBanned();
       // strip the query so a refresh does not repeat it
       return res.redirect("/admin/" + encodeURIComponent(ADMIN_KEY));
@@ -920,7 +1004,48 @@ function snapshot(region) {
   return { region, channels: state[region].channels, log: state[region].log };
 }
 function broadcast(region) {
+  fresh.delete(region);                 // the whole log is going anyway
   io.to(region).emit("sync", snapshot(region));
+}
+
+/* ---------------- only what moved ----------------
+   A burning tap used to send all forty channels and all three hundred log
+   lines to everybody watching — about 3 KB a head, for one number. Everyone is
+   subscribed to every board, so a tap on GOB8 also reached the people staring
+   at B1.
+
+   The server owns the board, so it knows exactly what changed: take a
+   fingerprint of each channel before the action, compare after, send the ones
+   that differ plus whatever the log gained. Fingerprinting is the point rather
+   than listing the touched channels by hand — an action can move a channel
+   nobody named, as `add` does when it pulls somebody off wherever they were,
+   and the settle and drop passes at the end of every action touch channels of
+   their own. A list written by hand would miss those; a comparison cannot. */
+function snapAll() {
+  const out = {};
+  live.forEach(r => { out[r] = state[r].channels.map(c => JSON.stringify(c)); });
+  return out;
+}
+
+function sendPatch(region, snap) {
+  const chans = state[region].channels;
+  const log = fresh.get(region) || [];
+  const changed = {};
+  let n = 0;
+  if (snap) {
+    for (let i = 0; i < chans.length; i++) {
+      if (JSON.stringify(chans[i]) !== snap[i]) { changed[i] = chans[i]; n++; }
+    }
+  }
+  if (!n && !log.length) return;              // nothing moved, so say nothing
+  // past half the board the whole thing is smaller than a list of pieces
+  if (n > CHANNELS / 2) { broadcast(region); return; }
+  fresh.delete(region);
+  io.to(region).emit("patch", { region, chans: changed, log });
+}
+
+function sendPatches(snaps) {
+  live.forEach(r => sendPatch(r, snaps && snaps[r]));
 }
 function broadcastChat() {
   io.emit("chatlog", state.chat);
@@ -949,7 +1074,7 @@ function scheduleMvpTimer() {
     io.emit("mvptimer", null);
     fireMvpCall(by);
     live.forEach(r => note(r, `MVP timer finished (started by ${by})`));
-    live.forEach(broadcast);
+    sendPatches(null);                   // no channel moved, only the log
   }, left);
 }
 
@@ -1114,6 +1239,7 @@ function applyPendingDrop(region, idx) {
   const board = state[region] && state[region].channels;
   const c = board && board[idx];
   if (!c || !c.pendingAt) return;
+  const snap = board.map(x => JSON.stringify(x));
   if (c.entries.length) { c.pendingAt = null; return; }   // somebody came back
   if (Date.now() < c.pendingAt) { scheduleDrop(region, idx); return; }
 
@@ -1129,7 +1255,7 @@ function applyPendingDrop(region, idx) {
     note(region, `${ch(idx)} burning ${was}% → ${c.pct}% — the drop that was still coming`);
   }
   persist();
-  broadcast(region);
+  sendPatch(region, snap);
 }
 
 function scheduleDrop(region, idx) {
@@ -1160,11 +1286,11 @@ function sweepDrops() {
   const every = state.proj.dropEvery * 60000;
   const step = state.proj.drop;
   let saved = false;
+  const snaps = snapAll();
 
   REGIONS.forEach(r => {
     const board = state[r.id] && state[r.id].channels;
     if (!board) return;
-    let touched = false;
 
     board.forEach((c, i) => {
       if (!c.entries.length) return;              // empty ones climb, they do not fall
@@ -1184,13 +1310,11 @@ function sweepDrops() {
       c.pct = next;
       note(r.id, `${ch(i)} burning ${was}% → ${next}% — `
         + `${owed} drop${owed === 1 ? "" : "s"} while sat on`);
-      touched = true;
       saved = true;
     });
-
-    if (touched) broadcast(r.id);
   });
 
+  sendPatches(snaps);
   if (saved) persist();
 }
 
@@ -1356,6 +1480,17 @@ io.on("connection", socket => {
     presence();
   });
 
+  /* A browser that sees a hole in the log numbering asks for the board back.
+     It should never happen — one socket, and the packets come in order — but a
+     missing line is invisible where a wrong board is not, so it is worth the
+     four lines to make it self-correcting. */
+  socket.on("resync", raw => {
+    const id = clean(raw, 12).toUpperCase();
+    const r = byId(id);
+    if (!r || !r.enabled) return;
+    socket.emit("sync", snapshot(id));
+  });
+
   // just changing tabs — no reload, only the watcher count moves
   socket.on("view", raw => {
     const id = clean(raw, 12).toUpperCase();
@@ -1371,6 +1506,12 @@ io.on("connection", socket => {
     if (!r || !r.enabled) return;
     const board = state[region].channels;
     const before = board.map(c => c.entries.length);
+    /* Every board, not just this one: renaming or deleting a person rewrites
+       their name on whichever channel they are standing on, which can be a
+       different board entirely. Eleven boards of forty is 440 small
+       stringifies, around a third of a millisecond — nothing against the
+       kilobytes it saves. */
+    const snaps = snapAll();
     const by = clean(a.by, 24) || "someone";
     if (nameless(by)) return;          // say who you are first
     if (isBanned(browserId, ip)) { boot(socket); return; }
@@ -1562,7 +1703,7 @@ io.on("connection", socket => {
         musicNote(`${by} queued a song`);
         persist();
         broadcastMusic();
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "music-remove": {
@@ -1726,7 +1867,7 @@ io.on("connection", socket => {
         persist();
         scheduleMvpTimer();
         io.emit("mvptimer", state.mvpTimer);
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "mvpnote": {
@@ -1738,7 +1879,7 @@ io.on("connection", socket => {
         followComms(region);
         persist();
         io.emit("mvpnotes", state.mvpNotes);
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "mvpnote-clear": {
@@ -1750,7 +1891,7 @@ io.on("connection", socket => {
         followComms(region);
         persist();
         io.emit("mvpnotes", state.mvpNotes);
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "mvpmsg": {
@@ -1764,7 +1905,7 @@ io.on("connection", socket => {
           : `MVP alert message back to following the comms, by ${by}`);
         persist();
         io.emit("mvpmsg", state.mvpMsg);
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "proj-set": {
@@ -1792,7 +1933,7 @@ io.on("connection", socket => {
           + (next.settle ? "confirm on arrival" : "no confirm on arrival"));
         persist();
         io.emit("proj", state.proj);
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "notice": {
@@ -1803,7 +1944,7 @@ io.on("connection", socket => {
         note(region, text ? `announcement posted by ${by}` : `announcement cleared by ${by}`);
         persist();
         broadcastNotice();
-        broadcast(region);
+        sendPatches(snaps);
         return;
       }
       case "person-add": {
@@ -1853,7 +1994,7 @@ io.on("connection", socket => {
         p.fx = fx;
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        sendPatches(snaps);
         return;
       }
       case "person-level": {
@@ -1872,7 +2013,7 @@ io.on("connection", socket => {
         note(region, lvl ? `${p.name} is level ${lvl}` : `${p.name}'s level cleared`);
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        sendPatches(snaps);
         return;
       }
       case "person-rename": {
@@ -1904,7 +2045,7 @@ io.on("connection", socket => {
         roster().sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        sendPatches(snaps);
         return;
       }
       case "person-remove": {
@@ -1917,7 +2058,7 @@ io.on("connection", socket => {
         state.rosters.ALL = roster().filter(x => x.id !== p.id);
         persist();
         broadcastRoster();
-        live.forEach(broadcast);
+        sendPatches(snaps);
         return;
       }
       case "assign": {
@@ -1934,7 +2075,7 @@ io.on("connection", socket => {
         } else if (from) {
           note(from.region, `${p.name} left ${ch(from.idx)} by ${by}`);
           note(region, `${p.name} added to ${ch(at)} by ${by} — was on ${from.region}`);
-          broadcast(from.region);
+          // the exit below patches every board, so the other one is covered
         } else {
           note(region, `${p.name} added to ${ch(at)} by ${by}`);
         }
@@ -2027,7 +2168,7 @@ io.on("connection", socket => {
     });
 
     persist();
-    broadcast(region);
+    sendPatches(snaps);
   });
 
   // "MVP is up" — one shout that reaches anyone currently on a channel, any board
@@ -2101,7 +2242,7 @@ io.on("connection", socket => {
     if (nameless(by)) return;
     note(viewing, `MVP called by ${by}`);
     persist();
-    broadcast(viewing);
+    sendPatch(viewing, null);   // one log line, no channel moved
     io.emit("mvp", { by, t: now, msg: state.mvpMsg });
   });
 
