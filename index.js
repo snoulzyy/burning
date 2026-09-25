@@ -154,6 +154,15 @@ function hydrate(saved) {
     state[r].log = keep;
   });
   if (!state.notice || typeof state.notice !== "object") state.notice = { text: "", by: "", at: 0 };
+  /* Shut for a while, with something to tell whoever turns up.
+     Suspending the service on Render would take the site off the air too, but
+     then visitors get Render's own "suspended by its owner" page and there is
+     nowhere to put a message. Staying up and serving one small page instead
+     costs almost nothing — a couple of kilobytes against the three hundred
+     the board weighs — and it can say when you will be back. */
+  if (!state.closed || typeof state.closed !== "object") state.closed = { on: false, text: "", at: 0 };
+  state.closed.on = !!state.closed.on;
+  if (typeof state.closed.text !== "string") state.closed.text = "";
   if (typeof state.mvpMsg !== "string") state.mvpMsg = "";
   /* Whether the alarm message is following the comms or was written by hand.
      Following is the default, because forgetting to set it is the common
@@ -680,6 +689,7 @@ function adminPage() {
   .say .clear{color:#8ba0b4;background:none;border:1px solid #22303f;font-weight:400}
   .say .clear:hover{color:#f87171;border-color:#f87171}
   .say .clear:disabled{color:#eab308;border-color:#eab308;cursor:default}
+  .say button:disabled{opacity:.4;cursor:default}
   .say .now{font-size:11px;color:#8ba0b4}
   /* what it will look like on the board, before anybody sees it */
   .pv-label{font-size:9.5px;letter-spacing:.16em;color:#5f7285;margin:16px 0 7px}
@@ -757,6 +767,25 @@ ${flash ? `<p class="flash${flash.bad ? " bad" : ""}">${esc(flash.text)}</p>` : 
   </div>
 </form>
 
+</section>
+
+<section class="card"><h2>CLOSE THE BOARD</h2>
+<form class="say" method="GET">
+  <p class="now" style="margin:0 0 10px">
+    Puts one page up in place of the board, with whatever you write here on it.
+    Nobody can change anything while it is closed. The service keeps running —
+    that is what lets it show your message at all.
+  </p>
+  <textarea name="closedmsg" maxlength="${NOTICE_MAX}"
+    placeholder="The server will be back up during night troupe">${esc(state.closed.text || "")}</textarea>
+  <div class="row">
+    <button type="submit" name="close" value="1" ${state.closed.on ? "disabled" : ""}>close the board</button>
+    <button type="submit" name="reopen" value="1" class="clear" ${state.closed.on ? "" : "disabled"}>open it again</button>
+    <span class="now">${state.closed.on
+      ? "closed " + esc(since(state.closed.at))
+      : "open — everything is running"}</span>
+  </div>
+</form>
 </section>
 
 <section class="card"><h2>DONATE BUTTON</h2>
@@ -868,6 +897,26 @@ if (ADMIN_KEY) {
     if (q.unban)   { delete state.bans.ids[q.unban];   changed = true; }
     if (q.unbanip) { delete state.bans.ips[q.unbanip]; changed = true; }
 
+    /* Shut the board, with a message, and open it again.
+       Closing does not stop the service — it could not say anything if it
+       did. Everyone who turns up gets one small page instead of the board,
+       everyone already on it gets the same words over the top of theirs, and
+       nothing can be changed until it is open again. */
+    if (q.close) {
+      state.closed = { on: true, text: cleanLines(q.closedmsg, NOTICE_MAX), at: Date.now() };
+      io.emit("closed", { on: true, text: state.closed.text });
+      live.forEach(r => note(r, "board closed"));
+      adminFlash = { bad: false, text: "The board is closed. Everyone sees your message." };
+      changed = true;
+    }
+    if (q.reopen) {
+      state.closed = { on: false, text: state.closed.text, at: 0 };
+      io.emit("closed", { on: false });
+      live.forEach(r => note(r, "board open again"));
+      adminFlash = { bad: false, text: "Open again." };
+      changed = true;
+    }
+
     /* Change someone's name or level without them having to do it.
        On the board only the browser that claimed a character can touch it,
        which is right for everybody else and a nuisance for whoever runs the
@@ -960,8 +1009,33 @@ app.get("/:region", (req, res, next) => {
   const r = byId(req.params.region.toUpperCase());
   if (!r) return next();
   if (!r.enabled) return res.status(404).send(offline(r.id));
+  if (state.closed.on) return res.set("Cache-Control", "no-store").send(closedPage());
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
+/* What everyone sees while the board is shut.
+   Answers 200 rather than 503 on purpose: a 503 is the honest status code for
+   a site that is down, but uptime checks and Render's own health checks read
+   it as broken, and this is not broken — it is shut, deliberately, and saying
+   so. It refreshes itself every half minute, so anyone who leaves the tab open
+   is back on the board the moment it reopens without having to think about it.
+
+   Says nothing about how it is turned off again. This page is served to
+   everybody. */
+function closedPage() {
+  const text = state.closed.text || "The board is closed for a bit. Back soon.";
+  return `<!doctype html><meta charset="utf-8">
+  <title>back soon</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="refresh" content="30">
+  <body style="background:#050a10;color:#8ba0b4;font:14px ui-monospace,monospace;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;box-sizing:border-box">
+  <div style="text-align:center;max-width:520px">
+    <p style="color:#eab308;font-size:11px;letter-spacing:.22em;margin:0 0 14px">BACK SOON</p>
+    <p style="color:#e6edf5;font-size:17px;line-height:1.65;margin:0;white-space:pre-wrap;word-break:break-word">${esc(text)}</p>
+    <p style="color:#3f556a;font-size:11px;margin:26px 0 0">This page checks for itself every thirty seconds.</p>
+  </div></body>`;
+}
 
 function offline(id) {
   return `<!doctype html><meta charset="utf-8">
@@ -1561,6 +1635,13 @@ io.on("connection", socket => {
   if (isBanned(browserId, ip)) { boot(socket); return; }
   noteSeen(browserId, ip, "");
 
+  /* Someone who already had the page open when it closed. Their socket
+     survives, so tell it — the notice goes up over the board they are looking
+     at, and comes down again by itself when the board reopens. Someone
+     arriving fresh never gets this far; they are served the closed page and
+     no socket is opened at all. */
+  if (state.closed.on) socket.emit("closed", { on: true, text: state.closed.text });
+
   let viewing = null;   // the tab they're looking at right now
 
   socket.on("join", raw => {
@@ -1613,6 +1694,12 @@ io.on("connection", socket => {
 
   socket.on("action", a => {
     if (!a || typeof a !== "object") return;
+    /* Shut means shut. Anyone who had the page open before it closed still
+       has the board sitting in their browser behind the notice, so without
+       this they could carry on moving people about on a board nobody else can
+       see. Not a lock — a page already loaded is out of reach — but it stops
+       the board drifting while it is meant to be still. */
+    if (state.closed.on) return;
     const region = (clean(a.region, 12).toUpperCase() || viewing);
     const r = byId(region);
     if (!r || !r.enabled) return;
@@ -2367,7 +2454,7 @@ io.on("connection", socket => {
   });
 
   socket.on("chat", m => {
-    if (!m || !viewing) return;
+    if (!m || !viewing || state.closed.on) return;
     const who = clean(m.who, 24) || "Guest";
     if (nameless(who)) return;         // say who you are first
     const text = clean(m.text, 200);

@@ -2216,6 +2216,14 @@
   </footer>
 </div>
 
+<div class="gate booted" id="shut" hidden>
+  <div class="gate-box">
+    <h3>BACK SOON</h3>
+    <p id="shutMsg"></p>
+    <p class="gate-fine">This comes down by itself when the board is back.</p>
+  </div>
+</div>
+
 <div class="gate booted" id="booted" hidden>
   <div class="gate-box">
     <h3>NO LONGER WELCOME</h3>
@@ -5772,6 +5780,31 @@ if(donateBtn) donateBtn.onclick = () => {
    and stop reconnecting. None of this is a security measure on its own — the
    server refuses this browser regardless — but the board should not still be
    on screen a minute later. */
+/* Closed for a while.
+   The board is still sitting underneath — the socket was open before it
+   closed, so it stays open and hears when it opens again, and the notice
+   lifts without anybody having to refresh. Anyone arriving after it closed
+   never loads this page at all; they are handed a small one instead.
+
+   Not a lock. The board behind this is the one already in the browser, and
+   the server refuses every change while it is closed, so there is nothing to
+   be gained by getting past it. */
+socket.on("closed", info => {
+  const box = document.getElementById("shut");
+  const msg = document.getElementById("shutMsg");
+  if(!box || !msg) return;
+  const on = !!(info && info.on);
+  if(on){
+    msg.textContent = (info.text || "").trim() || "The board is closed for a bit. Back soon.";
+    box.hidden = false;
+    try { if(typeof stopPlayer === "function") stopPlayer(); } catch(e){}
+  } else {
+    box.hidden = true;
+    // catch up on whatever moved while it was shut
+    regionList.filter(r => r.enabled).forEach(r => socket.emit("resync", r.id));
+  }
+});
+
 let booted = false;
 socket.on("banned", () => {
   if(booted) return;
