@@ -2255,6 +2255,7 @@ let rosters = {};       // area -> people list (RD boards share one, GOB another
 let areaOf = {};        // region -> area
 let pickedPerson = null;
 let mvpMsg = "";        // what the MVP alarm says, set by whoever runs the board
+let mvpAuto = true;     // following the top comms line, or pinned by hand
 let mvpTimer = null;    // { endsAt, by } — shared countdown, everyone sees the same clock
 let myIds = new Set();  // people claimed by this browser, worked out from the server list
 let myToken = "";
@@ -2569,6 +2570,47 @@ function recomputeMine(){
   myIds = new Set();
   Object.keys(rosters).forEach(area =>
     (rosters[area] || []).forEach(p => { if(p.claimedBy && p.claimedBy === myToken) myIds.add(p.id) }));
+}
+
+/* One of your own characters renamed from somewhere other than here.
+   Only the browser that claimed a character can rename it on the board, but
+   it can be renamed for you, and this browser has to go along with it:
+
+   - If it is the name you go by, you go by the new one. Set directly rather
+     than through applyMe, because applyMe renames every one of your chips to
+     whatever you are called — it would have pushed the old name straight back
+     and quietly undone the change.
+   - The list of names this browser reclaims after a wipe swaps the old
+     spelling for the new, or it would one day claim a stranger's character
+     that happened to be given the old name.
+
+   What each of your characters was called is kept between visits, so a
+   rename that happened while you were away is still noticed when you come
+   back, not only one that lands while the page is open. */
+let myNamesWas = null;
+try { myNamesWas = JSON.parse(localStorage.getItem("ct:mynames") || "null") } catch(e){ myNamesWas = null; }
+
+function followOutsideRenames(){
+  const now = {};
+  (rosters.ALL || []).forEach(p => { if(p.claimedBy && p.claimedBy === myToken) now[p.id] = p.name; });
+  if(myNamesWas && typeof myNamesWas === "object"){
+    Object.keys(now).forEach(id => {
+      const was = myNamesWas[id], name = now[id];
+      if(!was || was === name) return;
+      myClaimNames.delete(String(was).trim().toLowerCase());
+      myClaimNames.add(name.trim().toLowerCase());
+      saveClaimNames();
+      if(String(me).trim().toLowerCase() === String(was).trim().toLowerCase()){
+        me = name;
+        try { localStorage.setItem("ct:name", me) } catch(e){}
+        try { tellListening(); tellWho(); } catch(e){}
+        paintWho();
+        toast("You're " + name + " now");
+      }
+    });
+  }
+  myNamesWas = now;
+  try { localStorage.setItem("ct:mynames", JSON.stringify(now)) } catch(e){}
 }
 let board = [];
 let log = [];
@@ -3528,6 +3570,7 @@ window.addEventListener("popstate", () => {
 socket.on("roster", obj => {
   rosters = (obj && typeof obj === "object") ? obj : {};
   recomputeMine();
+  followOutsideRenames();
   recomputeColors();
   reclaimMine();
 
@@ -5946,25 +5989,36 @@ function paintMvpTitle(){
   say.hidden = !mvpMsg;
   say.textContent = mvpMsg || "";
   /* Show whether this is following the comms or was pinned by hand. Without
-     it there is no way to tell why a new comms line is not showing up. */
-  const pinned = !!mvpMsg && !(mvpNotes[0] && mvpNotes[0].text === mvpMsg);
+     it there is no way to tell why a new comms line is not showing up.
+     The server says which it is; comparing the text was only ever a guess.
+     A pinned one can be clicked to hand it back to the comms. */
+  const pinned = !!mvpMsg && !mvpAuto;
   say.classList.toggle("pinned", pinned);
+  say.style.cursor = pinned ? "pointer" : "";
+  say.onclick = pinned ? (() => send({ type:"mvpmsg", text:"" })) : null;
   say.title = !mvpMsg ? ""
     : pinned
       ? mvpMsg + "\n\nSet by hand, so it is not following the comms."
-        + " Right-click MVP and clear it to follow them again."
+        + " Click to hand it back to them."
       : mvpMsg + "\n\nFollowing the comms. Right-click MVP to write your own.";
 }
 
 function editMvpMessage(){
   /* Say what clearing it does. "(empty for the default)" gave no hint that an
      empty box hands the message back to the comms, so anyone who set one by
-     hand had no way of knowing how to undo it. */
+     hand had no way of knowing how to undo it.
+
+     The box opens empty while the alarm is following the comms. It used to
+     open with the comms line already typed in, so pressing OK — the natural
+     thing to do after reading it — pinned the alarm to those exact words and
+     it stopped following. Empty is the honest picture of the state it is in,
+     and OK on an empty box leaves it following. */
+  const following = mvpAuto || !mvpMsg;
   const asked = mvpNotes.length
     ? "What should the MVP alarm say?\n\nLeave it empty to follow the comms instead"
       + " — that would be:\n" + mvpNotes[0].text
     : "What should the MVP alarm say?\n\nLeave it empty for the default.";
-  const v = prompt(asked, mvpMsg || "");
+  const v = prompt(asked, following ? "" : (mvpMsg || ""));
   if(v === null) return;
   send({ type:"mvpmsg", text: v.trim().slice(0,140) });
 }
@@ -6087,6 +6141,7 @@ paintMvpTitle();
 socket.on("mvptimer", t => { mvpTimer = t || null; paintMvpTimer(); });
 
 socket.on("mvpmsg", t => { mvpMsg = typeof t === "string" ? t : ""; paintMvpTitle(); });
+socket.on("mvpauto", v => { mvpAuto = v !== false; paintMvpTitle(); });
 
 const bgBtn = document.getElementById("bgBtn");
 let bgOn = true;

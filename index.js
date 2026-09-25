@@ -27,6 +27,7 @@ function followComms(region) {
     note(region, want ? `MVP alert message now "${want}"` : "MVP alert message cleared");
   }
   io.emit("mvpmsg", state.mvpMsg);
+  io.emit("mvpauto", state.mvpMsgAuto);
   return true;
 }
 
@@ -514,6 +515,11 @@ app.get("/version", (_req, res) => res.json({ build: BUILD }));
    find by guessing, and nothing anywhere else on the site points at it. */
 const ADMIN_KEY = String(process.env.ADMIN_KEY || "").trim();
 
+/* What the last edit did, shown once at the top of the next page and then
+   gone. Carried here rather than in the address so a refresh neither repeats
+   the edit nor keeps repeating the message. There is one admin, so one slot. */
+let adminFlash = null;
+
 const esc = t => String(t == null ? "" : t)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;");
@@ -594,20 +600,32 @@ function adminPage() {
       </td>
     </tr>`).join("");
 
-  /* Every name on every board, with a way to take it off.
-     Normally a name can only be removed by the browser that added it — which
+  /* Every name on every board, with a way to change it or take it off.
+     Normally a name can only be touched by the browser that added it — which
      is right, but leaves nothing to do when somebody clears their cookies and
-     locks themselves out of their own name. This is the way round that. */
-  const peopleRows = roster().map(p => {
+     locks themselves out of their own name, or asks for a rename or a level
+     change and would rather not be walked through it. This is the way round
+     that. Each row is its own little form: edit the name, the level or both,
+     then save or press Enter. */
+  const peopleRows = roster().map((p, i) => {
     const at = liftLook(p.id);
+    const f = "e" + i;
     return `<tr>
-      <td>${esc(p.name)}</td>
-      <td class="dim">${p.level ? esc(String(p.level)) : "—"}</td>
+      <td><input class="ed ed-name" form="${f}" name="ename" maxlength="24"
+                 value="${esc(p.name)}" aria-label="name"></td>
+      <td><input class="ed ed-lvl" form="${f}" name="elevel" type="number" min="0" max="999"
+                 value="${p.level ? esc(String(p.level)) : ""}" placeholder="—" aria-label="level"></td>
       <td class="dim">${esc(p.claimedName || "—")}</td>
       <td class="dim">${at ? esc(at.region + " " + ch(at.idx)) : "—"}</td>
-      <td><a class="btn" href="?drop=${encodeURIComponent(p.id)}">remove</a></td>
+      <td class="acts">
+        <form id="${f}" method="GET"><input type="hidden" name="edit" value="${esc(p.id)}">
+          <button class="btn save" type="submit">save</button></form>
+        <a class="btn" href="?drop=${encodeURIComponent(p.id)}">remove</a>
+      </td>
     </tr>`;
   }).join("");
+  const flash = adminFlash;
+  adminFlash = null;                     // said once, then gone
 
   const banRows = Object.keys(state.bans.ids).map(id => {
     const b = state.bans.ids[id];
@@ -697,7 +715,26 @@ function adminPage() {
   .never{color:#5f7285;font-style:italic}
   /* has had one before, just is not using it now */
   .past{color:#eab308}
+  /* editable name and level in the people table */
+  .ed{
+    background:#0b131c;color:#e6edf5;border:1px solid #22303f;border-radius:6px;
+    padding:4px 7px;font:inherit;font-size:12px;box-sizing:border-box;
+  }
+  .ed:focus{outline:none;border-color:#eab308}
+  .ed-name{width:100%;min-width:120px}
+  .ed-lvl{width:62px}
+  .acts{white-space:nowrap}
+  .acts form{display:inline;margin:0}
+  button.btn{background:none;font:inherit;font-size:11px;cursor:pointer}
+  .btn.save{color:#eab308;border-color:rgba(234,179,8,.45)}
+  .btn.save:hover{color:#2a1a02;background:#eab308;border-color:#eab308}
+  .flash{
+    margin:0 0 16px;padding:9px 13px;border-radius:9px;font-size:12.5px;
+    border:1px solid rgba(34,211,238,.4);background:rgba(34,211,238,.07);color:#a5f3fc;
+  }
+  .flash.bad{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.08);color:#fecaca}
 </style>
+${flash ? `<p class="flash${flash.bad ? " bad" : ""}">${esc(flash.text)}</p>` : ""}
 <div class="cards">
 <section class="card"><h2>ANNOUNCEMENT</h2>
 <form class="say" method="GET">
@@ -830,6 +867,48 @@ if (ADMIN_KEY) {
     }
     if (q.unban)   { delete state.bans.ids[q.unban];   changed = true; }
     if (q.unbanip) { delete state.bans.ips[q.unbanip]; changed = true; }
+
+    /* Change someone's name or level without them having to do it.
+       On the board only the browser that claimed a character can touch it,
+       which is right for everybody else and a nuisance for whoever runs the
+       place — this is the way round it. One row, one save: whichever of the
+       two was changed is applied, and a name that cannot be used stops the
+       whole row so the level is not half-saved beside a refused name. */
+    if (q.edit) {
+      const p = findPerson(clean(q.edit, 40));
+      if (!p) {
+        adminFlash = { bad: true, text: "That person is no longer on the list." };
+      } else {
+        const snaps = snapAll();
+        const said = [];
+        const name = q.ename === undefined ? p.name : clean(q.ename, 24);
+        const lvl = q.elevel === undefined ? (p.level || 0) : cleanLevel(q.elevel);
+        const problem = name !== p.name ? renameProblem(p, name) : null;
+        if (problem) {
+          adminFlash = { bad: true, text: `Not renamed — ${problem}.` };
+        } else {
+          if (name !== p.name) {
+            const old = applyRename(p, name);
+            live.forEach(r => note(r, `${old} is now ${name}`));
+            said.push(`${old} → ${name}`);
+          }
+          if (lvl !== (p.level || 0)) {
+            p.level = lvl;
+            live.forEach(r => note(r, lvl ? `${p.name} is level ${lvl}` : `${p.name}'s level cleared`));
+            said.push(lvl ? `level ${lvl}` : "level cleared");
+          }
+          if (said.length) {
+            sendPatches(snaps);
+            broadcastRoster();
+            changed = true;
+            adminFlash = { bad: false, text: `${p.name}: ${said.join(", ")}` };
+          } else {
+            adminFlash = { bad: false, text: `${p.name}: nothing to change.` };
+          }
+        }
+      }
+      if (!changed) return res.redirect("/admin/" + encodeURIComponent(ADMIN_KEY));
+    }
 
     // the announcement everyone sees at the top of the board
     if (q.post) {
@@ -1390,6 +1469,38 @@ const roster = () => state.rosters.ALL;
 function findPerson(id) {
   return roster().find(p => p.id === id);
 }
+
+/* Renaming a character, whoever is doing it.
+   The owner renaming themselves and the admin page renaming someone else are
+   the same change, so they share the routine rather than two copies that
+   could drift apart — the name on the list, the name on whatever channel
+   they are standing on, and the list's order.
+
+   "Added by" follows too, but only when it was the same name. That column is
+   who claimed the character, and people claim under the name they play — so a
+   rename that left it behind would show someone as having been added by a
+   name nobody uses any more. If it was different to begin with, it is left
+   alone. */
+function renameProblem(p, name) {
+  if (!name || nameless(name)) return "that isn't a usable name";
+  const clash = roster().find(x => x.id !== p.id && x.name.toLowerCase() === name.toLowerCase());
+  if (clash) return `"${clash.name}" is already on the list`;
+  return null;
+}
+function applyRename(p, name) {
+  const old = p.name;
+  p.name = name;
+  if (p.claimedName && p.claimedName.toLowerCase() === old.toLowerCase()) p.claimedName = name;
+  live.forEach(r => state[r].channels.forEach(c =>
+    c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));
+  roster().sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+  return old;
+}
+// 0 clears it; anything else is held to a level that exists
+const cleanLevel = v => {
+  const raw = Math.round(Number(v));
+  return isFinite(raw) && raw > 0 ? Math.max(1, Math.min(999, raw)) : 0;
+};
 // pull someone off whatever channel they're on, within their own area
 // where somebody is, without moving them
 function liftLook(pid) {
@@ -1469,6 +1580,7 @@ io.on("connection", socket => {
     socket.emit("roster", state.rosters);
     socket.emit("notice", state.notice);
     socket.emit("mvpmsg", state.mvpMsg);
+    socket.emit("mvpauto", state.mvpMsgAuto);
     socket.emit("mvptimer", state.mvpTimer);
     socket.emit("music", musicView());
     socket.emit("musiclog", state.musicLog);
@@ -1897,14 +2009,26 @@ io.on("connection", socket => {
       case "mvpmsg": {
         state.mvpMsg = clean(a.text, 140);
         /* Writing one by hand takes it off the comms until it is cleared —
-           otherwise the next posted line would quietly undo what you wrote. */
-        state.mvpMsgAuto = !state.mvpMsg;
+           otherwise the next posted line would quietly undo what you wrote.
+
+           But the box used to open with the current message already in it, so
+           pressing OK without changing anything counted as writing one by hand.
+           The alarm was already saying what the comms said, and it pinned
+           itself to those words anyway; the next comms line then did nothing,
+           and the only way back was to reopen the box and delete the text.
+           So a message that matches the top comms line is following it, not
+           overriding it — the same words either way, and this one keeps up. */
+        const firstNote = state.mvpNotes[0];
+        state.mvpMsgAuto = !state.mvpMsg || !!(firstNote && firstNote.text === state.mvpMsg);
         if (state.mvpMsgAuto) followComms(null);
-        note(region, state.mvpMsg
-          ? `MVP alert message set by ${by}`
-          : `MVP alert message back to following the comms, by ${by}`);
+        note(region, !state.mvpMsg
+          ? `MVP alert message back to following the comms, by ${by}`
+          : state.mvpMsgAuto
+            ? `MVP alert message following the comms, by ${by}`
+            : `MVP alert message set by ${by}`);
         persist();
         io.emit("mvpmsg", state.mvpMsg);
+        io.emit("mvpauto", state.mvpMsgAuto);
         sendPatches(snaps);
         return;
       }
@@ -2006,8 +2130,7 @@ io.on("connection", socket => {
         const token = clean(a.token, 64);
         if (!p) return;
         if (p.claimedBy && p.claimedBy !== token) return;
-        const raw = Math.round(Number(a.level));
-        const lvl = isFinite(raw) && raw > 0 ? Math.max(1, Math.min(999, raw)) : 0;
+        const lvl = cleanLevel(a.level);
         if (lvl === (p.level || 0)) return;
         p.level = lvl;
         note(region, lvl ? `${p.name} is level ${lvl}` : `${p.name}'s level cleared`);
@@ -2039,10 +2162,7 @@ io.on("connection", socket => {
           socket.emit("renamefail", { name, by: clash.claimedName || "" });
           return;
         }
-        p.name = name;
-        live.forEach(r => state[r].channels.forEach(c =>
-          c.entries.forEach(e => { if (e.pid === p.id) e.name = name; })));
-        roster().sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase()));
+        applyRename(p, name);
         persist();
         broadcastRoster();
         sendPatches(snaps);
